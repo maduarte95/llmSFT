@@ -1,0 +1,30 @@
+name: "qwen-2.5-72b-switches"
+description: "TogetherAI Qwen 2.5 72B for switch classification"
+provider: "together"
+model: "Qwen/Qwen2.5-72B-Instruct-Turbo"
+type: "switches"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 1500
+  temperature: 0.15  # Conservative for consistency
+  top_p: 0.85
+  repetition_penalty: 1.05
+
+# Custom prompt template (optional override)
+prompt_template: null  # Use default
+
+# Metadata
+created_date: "2025-01-14"
+author: "research_team"
+notes: "Alternative model for comparison, known for strong reasoning capabilities"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    word_classifications:
+      - index: "integer"
+        word: "string"
+        switch: "integer (0 or 1)"

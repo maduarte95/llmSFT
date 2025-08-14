@@ -1,0 +1,30 @@
+name: "llama-3.3-70b-switches"
+description: "TogetherAI Llama 3.3 70B for switch classification"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "switches"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 1500
+  temperature: 0.0
+  top_p: 0.9
+  # repetition_penalty: 1.1
+
+# Custom prompt template (optional override)
+prompt_template: null  # Use default
+
+# Metadata
+created_date: "2025-01-14"
+author: "mariana"
+notes: "Cost-effective Llama model for switch classification"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    word_classifications:
+      - index: "integer"
+        word: "string"
+        switch: "integer (0 or 1)"

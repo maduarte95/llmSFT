@@ -1,0 +1,33 @@
+name: "claude-sonnet-4-switches" 
+description: "Anthropic Claude Sonnet 4 for switch classification"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "switches"
+version: "1.0"
+
+# Name must be "anthropic" or "together"
+# Provider must be "anthropic" or "together"
+# Type must be "switches", "labels", or "preds"
+
+# Model parameters - all optional, defaults depend on provider
+parameters:
+  max_tokens: 1500 # Required
+  temperature: 0.1  # Low for consistency
+  top_p: 0.9
+
+# Custom prompt template (optional, overrides default)
+prompt_template: null 
+
+# Metadata
+created_date: "2025-01-14"
+author: "mariana"
+notes: "High-quality model for switch classification with low temperature for consistency"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    word_classifications:
+      - index: "integer"
+        word: "string" 
+        switch: "integer (0 or 1)"

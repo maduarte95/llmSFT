@@ -2,8 +2,68 @@
 *.txt
 .env
 
-# add .idea folder
+# IDE folders
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# Project-specific folders
 files_from_exp1/
 old_files/
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# UV specific
+.uv_cache/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# Project output files
+*_with_llm_*.csv
+*_with_labels_*.csv
+batch_*.txt
+data_with_*

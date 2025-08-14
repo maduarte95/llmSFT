@@ -1,0 +1,52 @@
+name: "experimental-high-creativity-labels"
+description: "Experimental config with high creativity for diverse group labeling"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "labels"
+version: "1.0"
+
+# Model parameters - High creativity settings
+parameters:
+  max_tokens: 1200
+  temperature: 0.8  # High for creative labels
+  top_p: 0.95
+
+# Custom prompt template with creativity emphasis
+prompt_template: |
+  You are participating in a verbal fluency experiment. You will see groups of related words from the category "{category}" that were identified by another participant.
+
+  Your task is to provide SHORT, CREATIVE, and DESCRIPTIVE labels for what you feel each group of words has in common. Be imaginative and think outside the box! Consider multiple possible relationships: semantic, phonetic, cultural, functional, or conceptual.
+
+  Instructions:
+  - Look at each group of words
+  - Think creatively about what connects these words together
+  - Provide concise but evocative labels (2-4 words max)
+  - Consider unconventional relationships and creative interpretations
+  - There is no right or wrong answer - embrace creative groupings!
+
+  Groups from category "{category}":
+  {groups_text}
+
+  Examples of creative labels:
+  - For "banana, lemon, corn" → "sunshine colors" or "curved shapes"
+  - For "strawberry, blackberry, cranberry" → "berry symphony"
+  - For "papaya, pear, passion fruit" → "paradise P's"
+
+  You must respond with ONLY a JSON object containing labels for each group.
+  The response should have exactly {num_groups} group labels.
+
+  Only respond in JSON format. Do not include any other text.
+
+# Metadata
+created_date: "2025-01-14"
+author: "mariana"
+notes: "Experimental config for testing creative labeling approaches with high temperature"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    group_labels:
+      - group_number: "integer"
+        words: "array of strings"
+        label: "string"
