@@ -1,0 +1,9 @@
+*.csv
+*.txt
+.env
+
+# add .idea folder
+.idea/
+files_from_exp1/
+old_files/
+__pycache__/
