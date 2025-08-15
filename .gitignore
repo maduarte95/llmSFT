@@ -11,6 +11,11 @@
 # Project-specific folders
 files_from_exp1/
 old_files/
+data/
+claude_orig_attempt/
+analysis_output/
+
+
 
 # Python
 __pycache__/
