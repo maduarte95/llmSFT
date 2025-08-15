@@ -130,8 +130,8 @@ class ConfigManager:
             issues.append(f"Unknown provider: {config.provider}")
         
         # Valid type
-        if config.type not in ['switches', 'labels', 'preds']:
-            issues.append(f"Unknown type: {config.type}. Must be 'switches', 'labels', or 'preds'")
+        if config.type not in ['switches', 'labels', 'preds', 'prediction']:
+            issues.append(f"Unknown type: {config.type}. Must be 'switches', 'labels', 'preds', or 'prediction'")
         
         # Required parameters
         if not config.parameters.get('max_tokens'):

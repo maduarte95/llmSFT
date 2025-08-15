@@ -4,18 +4,19 @@ TogetherAI API provider implementation for LLM-based switch classification and g
 """
 
 import json
+import os
 import time
 import pandas as pd
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from together import Together
-from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler
+from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler, BaseSwitchPredictor
 
 
 class TogetherAIProvider(BaseLLMProvider):
     """TogetherAI API provider implementation."""
     
-    def __init__(self, api_key: str, model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"):
+    def __init__(self, api_key: str, model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo"):
         super().__init__(api_key, model)
     
     def initialize_client(self):
@@ -55,7 +56,6 @@ class TogetherAIProvider(BaseLLMProvider):
         
         # Step 2: Create temporary file and upload using Together SDK
         import tempfile
-        import os
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as temp_file:
             temp_file.write(jsonl_content)
@@ -121,14 +121,21 @@ class TogetherAIProvider(BaseLLMProvider):
             raise Exception("No output file ID found in batch info")
         
         # Download results file using Together SDK
-        self.client.files.retrieve_content(id=output_file_id, output="temp_batch_output.jsonl")
+        try:
+            self.client.files.retrieve_content(id=output_file_id, output="temp_batch_output.jsonl")
+        except FileNotFoundError as e:
+            # Handle Windows-specific lock file cleanup error in Together SDK
+            if "lock" in str(e).lower() and os.path.exists("temp_batch_output.jsonl"):
+                print(f"⚠️  Warning: Lock file cleanup failed, but download succeeded: {e}")
+                pass  # Continue processing since the file was downloaded successfully
+            else:
+                raise  # Re-raise if it's a different file error
         
         # Read the downloaded file
         with open("temp_batch_output.jsonl", "r") as f:
             file_content = f.read()
         
         # Clean up temp file
-        import os
         os.remove("temp_batch_output.jsonl")
         
         # Parse JSONL results
@@ -157,7 +164,7 @@ class TogetherAIProvider(BaseLLMProvider):
 class TogetherAISwitchClassifier(BaseSwitchClassifier):
     """TogetherAI-based switch classification."""
     
-    def __init__(self, api_key: str, model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"):
+    def __init__(self, api_key: str, model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo"):
         provider = TogetherAIProvider(api_key, model)
         super().__init__(provider)
     
@@ -338,9 +345,9 @@ Only respond in JSON format. Do not include any other text or explanation."""
 class TogetherAIGroupLabeler(BaseGroupLabeler):
     """TogetherAI-based group labeling."""
     
-    def __init__(self, api_key: str, model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"):
+    def __init__(self, api_key: str, model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo", config=None):
         provider = TogetherAIProvider(api_key, model)
-        super().__init__(provider)
+        super().__init__(provider, config)
     
     def create_group_labeling_prompt(self, groups: List[Dict[str, Any]], category: str) -> str:
         """Create a prompt for group labeling using TogetherAI JSON mode."""
@@ -351,6 +358,20 @@ class TogetherAIGroupLabeler(BaseGroupLabeler):
         
         groups_text = "\n".join(formatted_groups)
         
+        # Use custom prompt template if available in config
+        if self.config and self.config.prompt_template:
+            # For TogetherAI, add JSON mode instruction to custom template
+            custom_prompt = self.config.prompt_template.format(
+                category=category,
+                groups_text=groups_text,
+                num_groups=len(groups)
+            )
+            # Ensure JSON mode compliance for TogetherAI
+            if "Only respond in JSON format" not in custom_prompt:
+                custom_prompt += "\n\nOnly respond in JSON format. Do not include any other text."
+            return custom_prompt
+        
+        # Default TogetherAI prompt
         prompt = f"""You are participating in a verbal fluency experiment. You will see groups of related words from the category "{category}" that were identified by another participant.
 
 Your task is to provide a short, descriptive label for what you feel each group of words has in common. Think about the theme or concept that connects the words in each group.
@@ -460,3 +481,156 @@ Only respond in JSON format. Do not include any other text."""
         print(f"- Rows with labels: {result_data['labelLLM'].notna().sum()}")
         
         return result_data
+
+
+class TogetherAISwitchPredictor(BaseSwitchPredictor):
+    """TogetherAI-based switch prediction."""
+    
+    def __init__(self, api_key: str, model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo", config=None):
+        provider = TogetherAIProvider(api_key, model)
+        super().__init__(provider, config)
+    
+    def create_switch_prediction_prompt(self, chunk_words: List[str], category: str) -> str:
+        """Create a prompt for predicting if the next word will be a switch using TogetherAI JSON mode."""
+        formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(chunk_words)])
+        
+        # Use custom prompt template if available in config
+        if self.config and self.config.prompt_template:
+            # For TogetherAI, add JSON mode instruction to custom template
+            custom_prompt = self.config.prompt_template.format(
+                category=category,
+                chunk_words=formatted_words,
+                num_words=len(chunk_words),
+                chunk_length=len(chunk_words)
+            )
+            # Ensure JSON mode compliance for TogetherAI
+            if "Only respond in JSON format" not in custom_prompt:
+                custom_prompt += "\n\nOnly respond in JSON format. Do not include any other text."
+            return custom_prompt
+        
+        # Default TogetherAI prompt
+        prompt = f"""You are participating in a verbal fluency experiment. You will see a partial sequence of words from the category "{category}" that were produced by a participant.
+
+Your task is to predict whether the NEXT word (if there is one) will start a new thematic group or continue the current group.
+
+Think about:
+- What thematic group(s) the current words belong to
+- Whether the participant might switch to a different theme for their next word
+- Common patterns in verbal fluency tasks (people often cluster related words together)
+
+Current word sequence from category "{category}":
+{formatted_words}
+
+Based on this sequence, predict whether the NEXT word will:
+- 1: Start a new thematic group (switch)
+- 0: Continue the current thematic group (no switch)
+
+Consider the overall flow and grouping patterns. There is no right or wrong answer - this is about predicting human behavior patterns.
+
+You must respond with ONLY a JSON object containing your prediction. The "prediction" must be either 0 or 1. The "confidence" should be a number between 0 and 1. The "reasoning" should be a brief explanation (1-2 sentences).
+
+Only respond in JSON format. Do not include any other text."""
+        
+        return prompt
+    
+    def process_batch_results(self, batch_id: str, original_data: pd.DataFrame, requests_metadata: List[Dict]) -> pd.DataFrame:
+        """Process TogetherAI batch results and create a new DataFrame with chunk predictions."""
+        print(f"Processing TogetherAI switch prediction results from {batch_id}...")
+        
+        # Create metadata lookup
+        metadata_lookup = {req["custom_id"]: req["metadata"] for req in requests_metadata}
+        
+        # Initialize results list for new DataFrame
+        chunk_results = []
+        
+        successful_results = 0
+        failed_results = 0
+        
+        # Get results from TogetherAI
+        batch_results = self.provider.process_batch_results(batch_id)
+        
+        # Process each result
+        for result in batch_results:
+            custom_id = result.get("custom_id")
+            
+            if "response" in result and result["response"]["status_code"] == 200:
+                try:
+                    # Parse the LLM response
+                    response_body = result["response"]["body"]
+                    response_text = response_body["choices"][0]["message"]["content"]
+                    
+                    # Clean and parse JSON response
+                    response_text = response_text.strip()
+                    if response_text.startswith("```json"):
+                        response_text = response_text[7:]
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]
+                    response_text = response_text.strip()
+                    
+                    response_data = json.loads(response_text)
+                    
+                    # Get metadata for this request
+                    metadata = metadata_lookup.get(custom_id, {})
+                    
+                    prediction = response_data.get('prediction')
+                    confidence = response_data.get('confidence')
+                    reasoning = response_data.get('reasoning', '')
+                    
+                    if prediction not in [0, 1]:
+                        print(f"  ❌ Invalid prediction for {custom_id}: {prediction}")
+                        failed_results += 1
+                        continue
+                    
+                    if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
+                        print(f"  ❌ Invalid confidence for {custom_id}: {confidence}")
+                        failed_results += 1
+                        continue
+                    
+                    # Create result record
+                    chunk_result = {
+                        'chunk_id': metadata.get('chunk_id'),
+                        'player_id': metadata.get('player_id'),
+                        'category': metadata.get('category'),
+                        'chunk_end_index': metadata.get('chunk_end_index'),
+                        'chunk_words': ', '.join(metadata.get('chunk_words', [])),
+                        'next_word': metadata.get('next_word'),
+                        'sequence_length': metadata.get('sequence_length'),
+                        'prediction_llm': prediction,
+                        'confidence_llm': confidence,
+                        'reasoning_llm': reasoning,
+                        'chunk_length': len(metadata.get('chunk_words', []))
+                    }
+                    
+                    chunk_results.append(chunk_result)
+                    successful_results += 1
+                    
+                    if successful_results <= 5:  # Show first few for debugging
+                        print(f"  ✅ {metadata.get('player_id')} chunk {metadata.get('chunk_end_index')}: {prediction} (conf: {confidence:.2f})")
+                
+                except Exception as e:
+                    print(f"  ❌ Error processing result for {custom_id}: {e}")
+                    failed_results += 1
+            else:
+                print(f"  ❌ Failed result for {custom_id}: {result}")
+                failed_results += 1
+        
+        print(f"\nPrediction summary:")
+        print(f"- Successful: {successful_results}")
+        print(f"- Failed: {failed_results}")
+        
+        if len(chunk_results) > 0:
+            # Create new DataFrame with chunk results
+            result_df = pd.DataFrame(chunk_results)
+            
+            # Add some summary stats
+            avg_confidence = result_df['confidence_llm'].mean()
+            switch_rate = result_df['prediction_llm'].mean()
+            
+            print(f"- Total chunks processed: {len(result_df)}")
+            print(f"- Average confidence: {avg_confidence:.3f}")
+            print(f"- Predicted switch rate: {switch_rate:.3f}")
+            
+            return result_df
+        else:
+            print("❌ No valid results to return")
+            return pd.DataFrame()

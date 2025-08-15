@@ -1,0 +1,33 @@
+name: "claude-sonnet-4-prediction" 
+description: "Anthropic Claude Sonnet 4 for switch prediction"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "prediction"
+version: "1.0"
+
+# Name must be "anthropic" or "together"
+# Provider must be "anthropic" or "together"
+# Type must be "switches", "labels", or "prediction"
+
+# Model parameters - all optional, defaults depend on provider
+parameters:
+  max_tokens: 500 # Lower than switches since responses are simpler
+  temperature: 0.1  # Low for consistency
+  top_p: 0.9
+
+# Custom prompt template (optional, overrides default)
+# Available variables: {category}, {chunk_words}, {num_words}, {chunk_length}
+prompt_template: null 
+
+# Metadata
+created_date: "2025-01-15"
+author: "mariana"
+notes: "High-quality model for switch prediction with low temperature for consistency"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    prediction: "integer (0 or 1)"
+    confidence: "float (0.0 to 1.0)"
+    reasoning: "string"

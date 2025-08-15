@@ -16,6 +16,11 @@ parameters:
   top_p: 0.9
 
 # Custom prompt template (optional, overrides default)
+# Available variables:
+  # - {category} - The verbal fluency category
+  # - {word_sequence} - Formatted word list ("0. cat\n1. dog\n2. fish")
+  # - {num_words} - Number of words in sequence
+  
 prompt_template: null 
 
 # Metadata

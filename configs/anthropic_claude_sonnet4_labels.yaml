@@ -12,6 +12,11 @@ parameters:
   top_p: 0.9
 
 # Custom prompt template (optional override)
+# Available variables:
+  # - {category} - The verbal fluency category
+  # - {groups_text} - Formatted groups ("Group 1: cat, dog\nGroup 2: fish, bird")
+  # - {num_groups} - Number of groups to label
+
 prompt_template: null  # Use default
 
 # Metadata

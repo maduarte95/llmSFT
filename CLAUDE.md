@@ -1,0 +1,1 @@
+- This project uses uv; remember that when attempting to run code through the terminal!

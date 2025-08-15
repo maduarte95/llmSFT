@@ -1,0 +1,58 @@
+name: "claude-sonnet-4-prediction-custom" 
+description: "Anthropic Claude Sonnet 4 for switch prediction with custom prompt"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "prediction"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 500
+  temperature: 0.15  # Slightly higher for more creative predictions
+  top_p: 0.9
+
+# Custom prompt template - demonstrates how to customize the prediction task
+# Available variables: {category}, {chunk_words}, {num_words}, {chunk_length}
+prompt_template: |
+  🧠 VERBAL FLUENCY PREDICTION TASK 🧠
+
+  You're analyzing human word production patterns in a "{category}" verbal fluency task.
+
+  CURRENT SEQUENCE ({chunk_length} words):
+  {chunk_words}
+
+  🎯 YOUR MISSION: Predict if the participant's NEXT word will start a new semantic cluster or continue the current one.
+
+  🤔 ANALYSIS FACTORS:
+  • Semantic relationships between current words
+  • Typical human clustering strategies (alphabetical, functional, visual, etc.)
+  • Sequence length effects (longer chains = higher switch probability)
+  • Category-specific patterns
+
+  📊 PREDICTION RULES:
+  • 1 = SWITCH (next word starts new cluster)
+  • 0 = CONTINUE (next word continues current cluster)
+
+  💭 Consider: After {chunk_length} words, how likely is the participant to switch themes?
+
+  Respond with JSON containing:
+  {{
+    "prediction": 0 or 1,
+    "confidence": 0.0 to 1.0,
+    "reasoning": "Brief explanation of your prediction logic"
+  }}
+
+  IMPORTANT: Your response must be valid JSON only. No other text.
+
+# Metadata
+created_date: "2025-01-15"
+author: "mariana"
+notes: "Custom prompt with emojis and detailed instructions for switch prediction"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    prediction: "integer (0 or 1)"
+    confidence: "float (0.0 to 1.0)"
+    reasoning: "string"

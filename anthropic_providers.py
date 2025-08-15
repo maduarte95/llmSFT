@@ -9,7 +9,7 @@ import pandas as pd
 import json
 import time
 from typing import List, Dict, Any
-from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler
+from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler, BaseSwitchPredictor
 
 
 class AnthropicProvider(BaseLLMProvider):
@@ -234,9 +234,9 @@ class AnthropicSwitchClassifier(BaseSwitchClassifier):
 class AnthropicGroupLabeler(BaseGroupLabeler):
     """Anthropic-based group labeling (wrapping existing functionality)."""
     
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514", config=None):
         provider = AnthropicProvider(api_key, model)
-        super().__init__(provider)
+        super().__init__(provider, config)
     
     def process_batch_results(self, batch_id: str, original_data: pd.DataFrame, requests_metadata: List[Dict]) -> pd.DataFrame:
         """Process Anthropic batch results and add LLM group labels to the original data."""
@@ -320,3 +320,111 @@ class AnthropicGroupLabeler(BaseGroupLabeler):
         print(f"- Rows with labels: {result_data['labelLLM'].notna().sum()}")
         
         return result_data
+
+
+class AnthropicSwitchPredictor(BaseSwitchPredictor):
+    """Anthropic-based switch prediction."""
+    
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514", config=None):
+        provider = AnthropicProvider(api_key, model)
+        super().__init__(provider, config)
+    
+    def process_batch_results(self, batch_id: str, original_data: pd.DataFrame, requests_metadata: List[Dict]) -> pd.DataFrame:
+        """Process Anthropic batch results and create a new DataFrame with chunk predictions."""
+        print(f"Processing Anthropic switch prediction results from {batch_id}...")
+        
+        # Create metadata lookup
+        metadata_lookup = {req["custom_id"]: req["metadata"] for req in requests_metadata}
+        
+        # Initialize results list for new DataFrame
+        chunk_results = []
+        
+        successful_results = 0
+        failed_results = 0
+        
+        # Get results from Anthropic
+        batch_results = self.provider.process_batch_results(batch_id)
+        
+        # Process each result
+        for result in batch_results:
+            if result.result.type == "succeeded":
+                try:
+                    # Parse the LLM response
+                    response_text = result.result.message.content[0].text
+                    
+                    # Clean response text
+                    response_text = response_text.strip()
+                    if response_text.startswith("```json"):
+                        response_text = response_text[7:]
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]
+                    response_text = response_text.strip()
+                    
+                    response_data = json.loads(response_text)
+                    
+                    # Get metadata for this request
+                    custom_id = result.custom_id
+                    metadata = metadata_lookup.get(custom_id, {})
+                    
+                    prediction = response_data.get('prediction')
+                    confidence = response_data.get('confidence')
+                    reasoning = response_data.get('reasoning', '')
+                    
+                    if prediction not in [0, 1]:
+                        print(f"  ❌ Invalid prediction for {custom_id}: {prediction}")
+                        failed_results += 1
+                        continue
+                    
+                    if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
+                        print(f"  ❌ Invalid confidence for {custom_id}: {confidence}")
+                        failed_results += 1
+                        continue
+                    
+                    # Create result record
+                    chunk_result = {
+                        'chunk_id': metadata.get('chunk_id'),
+                        'player_id': metadata.get('player_id'),
+                        'category': metadata.get('category'),
+                        'chunk_end_index': metadata.get('chunk_end_index'),
+                        'chunk_words': ', '.join(metadata.get('chunk_words', [])),
+                        'next_word': metadata.get('next_word'),
+                        'sequence_length': metadata.get('sequence_length'),
+                        'prediction_llm': prediction,
+                        'confidence_llm': confidence,
+                        'reasoning_llm': reasoning,
+                        'chunk_length': len(metadata.get('chunk_words', []))
+                    }
+                    
+                    chunk_results.append(chunk_result)
+                    successful_results += 1
+                    
+                    if successful_results <= 5:  # Show first few for debugging
+                        print(f"  ✅ {metadata.get('player_id')} chunk {metadata.get('chunk_end_index')}: {prediction} (conf: {confidence:.2f})")
+                
+                except Exception as e:
+                    print(f"  ❌ Error processing result for {result.custom_id}: {e}")
+                    failed_results += 1
+            else:
+                print(f"  ❌ Failed result for {result.custom_id}: {result.result}")
+                failed_results += 1
+        
+        print(f"\nPrediction summary:")
+        print(f"- Successful: {successful_results}")
+        print(f"- Failed: {failed_results}")
+        
+        if len(chunk_results) > 0:
+            # Create new DataFrame with chunk results
+            result_df = pd.DataFrame(chunk_results)
+            
+            # Add some summary stats
+            avg_confidence = result_df['confidence_llm'].mean()
+            switch_rate = result_df['prediction_llm'].mean()
+            
+            print(f"- Total chunks processed: {len(result_df)}")
+            print(f"- Average confidence: {avg_confidence:.3f}")
+            print(f"- Predicted switch rate: {switch_rate:.3f}")
+            
+            return result_df
+        else:
+            print("❌ No valid results to return")
+            return pd.DataFrame()
