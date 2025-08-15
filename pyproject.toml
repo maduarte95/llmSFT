@@ -17,6 +17,9 @@ dependencies = [
     "numpy>=1.21.0",
     "pyyaml>=6.0",
     "together>=1.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    "scikit-learn>=1.0.0",
 ]
 
 [project.optional-dependencies]
