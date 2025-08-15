@@ -1,0 +1,38 @@
+name: "claude-opus-3-switches" 
+description: "Anthropic Claude Opus 3 for switch classification"
+provider: "anthropic"
+model: "claude-3-opus-20240229"
+type: "switches"
+version: "1.0"
+
+# Name must be "anthropic" or "together"
+# Provider must be "anthropic" or "together"
+# Type must be "switches", "labels", or "preds"
+
+# Model parameters - all optional, defaults depend on provider
+parameters:
+  max_tokens: 1500 # Required
+  temperature: 0.1  # Low for consistency
+  top_p: 0.9
+
+# Custom prompt template (optional, overrides default)
+# Available variables:
+  # - {category} - The verbal fluency category
+  # - {word_sequence} - Formatted word list ("0. cat\n1. dog\n2. fish")
+  # - {num_words} - Number of words in sequence
+  
+prompt_template: null 
+
+# Metadata
+created_date: "2025-01-14"
+author: "mariana"
+notes: "Special very aligned model, although deprecated"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    word_classifications:
+      - index: "integer"
+        word: "string" 
+        switch: "integer (0 or 1)"

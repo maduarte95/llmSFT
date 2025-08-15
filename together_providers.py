@@ -390,7 +390,14 @@ Examples of good labels:
 - For "strawberry, blackberry, cranberry" → "berries" 
 - For "papaya, pear, passion fruit" → "words starting with P" or "tropical fruits"
 
-You must respond with ONLY a JSON object containing labels for each group.
+You must respond with ONLY a JSON object in this exact format:
+{{
+  "group_labels": [
+    {{"group_number": 1, "words": ["word1", "word2"], "label": "descriptive label"}},
+    {{"group_number": 2, "words": ["word3", "word4"], "label": "descriptive label"}}
+  ]
+}}
+
 The response should have exactly {len(groups)} group labels (one for each group shown above).
 
 Only respond in JSON format. Do not include any other text."""

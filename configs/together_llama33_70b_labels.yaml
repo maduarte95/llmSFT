@@ -1,0 +1,34 @@
+name: "together-llama-33-70b-labels"
+description: "Together Llama 3.3 70B for group labeling"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "labels"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 1000
+  temperature: 0.1
+  top_p: 0.9
+
+# Custom prompt template (optional override)
+# Available variables:
+  # - {category} - The verbal fluency category
+  # - {groups_text} - Formatted groups ("Group 1: cat, dog\nGroup 2: fish, bird")
+  # - {num_groups} - Number of groups to label
+
+prompt_template: null  # Use default
+
+# Metadata
+created_date: "2025-01-14"
+author: "mariana"
+notes: "Cost-effective open-source model for descriptive group labeling"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    group_labels:
+      - group_number: "integer"
+        words: "array of strings"
+        label: "string"
