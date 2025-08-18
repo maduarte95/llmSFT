@@ -45,33 +45,132 @@ def improve_normalization(text):
     
     return text
 
-def load_and_process_word_pred_data(data_dir="analysis_output/word_pred_data"):
+def find_csv_files():
     """
-    Load and combine all word prediction CSV files with improved processing.
-    
-    Parameters:
-    data_dir: str, directory containing word prediction data
+    Find all CSV files in the current directory and subdirectories.
     
     Returns:
-    pandas.DataFrame, combined and processed data
+    list, paths to CSV files
     """
-    files = ['animals_preds.csv', 'clothes_preds.csv', 'supermarket_preds.csv']
-    all_data = []
+    csv_files = []
     
-    for file in files:
-        file_path = os.path.join(data_dir, file)
-        if os.path.exists(file_path):
-            df = pd.read_csv(file_path)
-            all_data.append(df)
-            print(f"Loaded {file}: {len(df)} rows")
-        else:
-            print(f"Warning: {file} not found")
+    # Search in current directory and common subdirectories
+    search_dirs = ['.', 'data', 'process_for_labels', 'analysis_output', 'analysis_output/word_pred_data']
     
-    if not all_data:
-        raise ValueError("No data files found")
+    for search_dir in search_dirs:
+        if os.path.exists(search_dir):
+            for root, dirs, files in os.walk(search_dir):
+                for file in files:
+                    if file.endswith('.csv') and not file.startswith('.'):
+                        csv_files.append(os.path.join(root, file))
     
-    # Combine all dataframes
-    combined_df = pd.concat(all_data, ignore_index=True)
+    return sorted(csv_files)
+
+def select_csv_file(csv_files):
+    """
+    Allow user to select a CSV file from the available options.
+    
+    Parameters:
+    csv_files: list, paths to CSV files
+    
+    Returns:
+    str, selected file path or 'combine' for combining multiple files
+    """
+    if not csv_files:
+        print("No CSV files found in the current directory or subdirectories.")
+        return None
+    
+    print("Available CSV files:")
+    print("=" * 60)
+    
+    for i, file_path in enumerate(csv_files, 1):
+        # Get file size for display
+        try:
+            file_size = os.path.getsize(file_path)
+            size_mb = file_size / (1024 * 1024)
+            print(f"{i:2d}. {file_path} ({size_mb:.1f} MB)")
+        except:
+            print(f"{i:2d}. {file_path}")
+    
+    # Add option to combine word prediction files
+    word_pred_files = [f for f in csv_files if any(pred in f.lower() for pred in ['animals_preds', 'clothes_preds', 'supermarket_preds'])]
+    if word_pred_files:
+        print(f"{len(csv_files) + 1:2d}. Combine word prediction files (animals_preds.csv, clothes_preds.csv, supermarket_preds.csv)")
+    
+    print("=" * 60)
+    
+    max_choice = len(csv_files) + (1 if word_pred_files else 0)
+    
+    while True:
+        try:
+            choice = input(f"Select a file (1-{max_choice}) or 'q' to quit: ").strip()
+            
+            if choice.lower() == 'q':
+                return None
+            
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(csv_files):
+                selected_file = csv_files[choice_num - 1]
+                print(f"Selected: {selected_file}")
+                return selected_file
+            elif choice_num == len(csv_files) + 1 and word_pred_files:
+                print("Selected: Combine word prediction files")
+                return 'combine'
+            else:
+                print(f"Please enter a number between 1 and {max_choice}")
+                
+        except ValueError:
+            print("Please enter a valid number or 'q' to quit")
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            return None
+
+def load_and_process_word_pred_data(data_source="analysis_output/word_pred_data"):
+    """
+    Load and process word prediction data from either a single CSV file or multiple files.
+    
+    Parameters:
+    data_source: str, either a single CSV file path or directory containing word prediction files
+    
+    Returns:
+    pandas.DataFrame, processed data
+    """
+    if data_source == 'combine':
+        # Original behavior - combine specific files
+        data_dir = "analysis_output/word_pred_data"
+        files = ['animals_preds.csv', 'clothes_preds.csv', 'supermarket_preds.csv']
+        all_data = []
+        
+        for file in files:
+            file_path = os.path.join(data_dir, file)
+            if os.path.exists(file_path):
+                df = pd.read_csv(file_path)
+                all_data.append(df)
+                print(f"Loaded {file}: {len(df)} rows")
+            else:
+                print(f"Warning: {file} not found")
+        
+        if not all_data:
+            raise ValueError("No word prediction files found")
+        
+        combined_df = pd.concat(all_data, ignore_index=True)
+        
+    elif os.path.isfile(data_source):
+        # Load single CSV file
+        print(f"Loading single file: {data_source}")
+        combined_df = pd.read_csv(data_source)
+        print(f"Loaded: {len(combined_df)} rows")
+        
+    else:
+        raise ValueError(f"Invalid data source: {data_source}")
+    
+    # Check for required columns
+    required_cols = ['text', 'predicted']
+    missing_cols = [col for col in required_cols if col not in combined_df.columns]
+    if missing_cols:
+        print(f"Warning: Missing required columns: {missing_cols}")
+        print(f"Available columns: {list(combined_df.columns)}")
+        return combined_df
     
     # Apply improved normalization
     combined_df['text_improved_norm'] = combined_df['text'].apply(improve_normalization)
@@ -83,13 +182,16 @@ def load_and_process_word_pred_data(data_dir="analysis_output/word_pred_data"):
     )
     
     # Remove rows where index is 0 (always NaN for predictions according to notes)
-    combined_df = combined_df[combined_df['index'] != 0].copy()
+    if 'index' in combined_df.columns:
+        combined_df = combined_df[combined_df['index'] != 0].copy()
     
     # Remove rows with NaN predictions
     combined_df = combined_df.dropna(subset=['predicted']).copy()
     
-    print(f"Combined dataset: {len(combined_df)} rows after processing")
-    print(f"Categories: {combined_df['category'].value_counts().to_dict()}")
+    print(f"Processed dataset: {len(combined_df)} rows after processing")
+    
+    if 'category' in combined_df.columns:
+        print(f"Categories: {combined_df['category'].value_counts().to_dict()}")
     
     return combined_df
 
@@ -122,7 +224,7 @@ def calculate_accuracy_by_word_index(df, accuracy_col='correct_improved', window
     
     return accuracy_by_window
 
-def plot_accuracy_by_word_index(accuracy_df, output_dir="analysis_output/plots", timestamp=None):
+def plot_accuracy_by_word_index(accuracy_df, output_dir="analysis_output/plots/word_prediction", timestamp=None):
     """
     Create visualization of word prediction accuracy by word index windows (similar to switch prediction plots).
     
@@ -174,7 +276,7 @@ def plot_accuracy_by_word_index(accuracy_df, output_dir="analysis_output/plots",
     
     plt.show()
 
-def generate_summary_statistics(df, accuracy_df, output_dir="analysis_output/statistics", timestamp=None):
+def generate_summary_statistics(df, accuracy_df, output_dir="analysis_output/statistics/word_prediction", timestamp=None):
     """
     Generate and save summary statistics.
     
@@ -222,26 +324,61 @@ def generate_summary_statistics(df, accuracy_df, output_dir="analysis_output/sta
 
 def main():
     """Main analysis function."""
-    print("Starting Word Prediction Analysis...")
+    print("Word Prediction Analysis")
+    print("=" * 60)
+    
+    # Find available CSV files
+    csv_files = find_csv_files()
+    
+    # Let user select file or combine option
+    data_source = select_csv_file(csv_files)
+    if data_source is None:
+        return
     
     # Load and process data
     try:
-        df = load_and_process_word_pred_data()
+        df = load_and_process_word_pred_data(data_source)
     except Exception as e:
         print(f"Error loading data: {e}")
         return
     
-    # Calculate accuracy by word index
-    accuracy_df = calculate_accuracy_by_word_index(df)
+    # Check if we have the minimum required columns for word prediction analysis
+    if 'index' not in df.columns:
+        print("Warning: 'index' column not found. Word index analysis may not work properly.")
+        print("Available columns:", list(df.columns))
+        
+        # Ask user if they want to continue
+        try:
+            continue_choice = input("Continue anyway? (y/n): ").strip().lower()
+            if continue_choice != 'y':
+                return
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            return
     
-    # Generate timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Create visualization
-    plot_accuracy_by_word_index(accuracy_df, timestamp=timestamp)
-    
-    # Generate summary statistics
-    stats = generate_summary_statistics(df, accuracy_df, timestamp=timestamp)
+    # Calculate accuracy by word index (if index column exists)
+    if 'index' in df.columns:
+        accuracy_df = calculate_accuracy_by_word_index(df)
+        
+        # Generate timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Create visualization
+        plot_accuracy_by_word_index(accuracy_df, timestamp=timestamp)
+        
+        # Generate summary statistics
+        stats = generate_summary_statistics(df, accuracy_df, timestamp=timestamp)
+    else:
+        # Just generate basic statistics without word index analysis
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        print("\n=== BASIC WORD PREDICTION ANALYSIS ===")
+        print(f"Total predictions analyzed: {len(df)}")
+        if 'correct_improved' in df.columns:
+            print(f"Overall accuracy (improved): {df['correct_improved'].mean():.3f}")
+        if 'playerID' in df.columns:
+            print(f"Unique participants: {df['playerID'].nunique()}")
+        if 'category' in df.columns:
+            print(f"Categories: {df['category'].value_counts().to_dict()}")
     
     print("\nAnalysis complete!")
 

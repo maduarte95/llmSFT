@@ -46,8 +46,8 @@ class SwitchAnalysisPipeline:
         
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
-        os.makedirs(os.path.join(output_dir, "plots"), exist_ok=True)
-        os.makedirs(os.path.join(output_dir, "statistics"), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "plots", "switch_analysis"), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "statistics", "switch_analysis"), exist_ok=True)
         
         # Define switch column mappings
         self.switch_columns = {
@@ -309,7 +309,7 @@ class SwitchAnalysisPipeline:
         print(f"Metrics calculated for {len(self.participant_metrics)} method-participant combinations")
         
         # Save participant metrics
-        metrics_path = os.path.join(self.output_dir, "statistics", f"participant_metrics_{self.timestamp}.csv")
+        metrics_path = os.path.join(self.output_dir, "statistics", "switch_analysis", f"participant_metrics_{self.timestamp}.csv")
         self.participant_metrics.to_csv(metrics_path, index=False)
         print(f"Participant metrics saved to: {metrics_path}")
         
@@ -391,7 +391,7 @@ class SwitchAnalysisPipeline:
         self.summary_stats = pd.concat(summary_stats, ignore_index=True)
         
         # Save summary statistics
-        summary_path = os.path.join(self.output_dir, "statistics", f"summary_statistics_{self.timestamp}.csv")
+        summary_path = os.path.join(self.output_dir, "statistics", "switch_analysis", f"summary_statistics_{self.timestamp}.csv")
         self.summary_stats.to_csv(summary_path, index=False)
         print(f"Summary statistics saved to: {summary_path}")
         
@@ -413,6 +413,9 @@ class SwitchAnalysisPipeline:
         
         # Step 4: Create visualizations
         self.create_all_visualizations()
+        
+        # Step 5: Calculate TPR/FPR confusion matrix metrics
+        self.calculate_tpr_fpr_metrics()
         
         print("\nAnalysis pipeline completed successfully!")
         print(f"All outputs saved to: {self.output_dir}")
@@ -523,7 +526,7 @@ class SwitchAnalysisPipeline:
         plt.tight_layout()
         
         # Save plot
-        plot_path = os.path.join(self.output_dir, "plots", f"{metric}_overall_comparison_{self.timestamp}.png")
+        plot_path = os.path.join(self.output_dir, "plots", "switch_analysis", f"{metric}_overall_comparison_{self.timestamp}.png")
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -604,7 +607,7 @@ class SwitchAnalysisPipeline:
         plt.tight_layout()
         
         # Save plot
-        plot_path = os.path.join(self.output_dir, "plots", f"{metric}_{task_type}_by_category_{self.timestamp}.png")
+        plot_path = os.path.join(self.output_dir, "plots", "switch_analysis", f"{metric}_{task_type}_by_category_{self.timestamp}.png")
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -723,7 +726,7 @@ class SwitchAnalysisPipeline:
         plt.tight_layout()
         
         # Save plot
-        plot_path = os.path.join(self.output_dir, "plots", f"accuracy_by_word_index_{self.timestamp}.png")
+        plot_path = os.path.join(self.output_dir, "plots", "switch_analysis", f"accuracy_by_word_index_{self.timestamp}.png")
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -742,7 +745,7 @@ class SwitchAnalysisPipeline:
                 })
         
         window_df = pd.DataFrame(window_results_flat)
-        window_path = os.path.join(self.output_dir, "statistics", f"accuracy_by_window_{self.timestamp}.csv")
+        window_path = os.path.join(self.output_dir, "statistics", "switch_analysis", f"accuracy_by_window_{self.timestamp}.csv")
         window_df.to_csv(window_path, index=False)
         print(f"  Window accuracy data saved: {window_path}")
     
@@ -861,7 +864,7 @@ class SwitchAnalysisPipeline:
             plt.tight_layout()
             
             # Save plot
-            plot_path = os.path.join(self.output_dir, "plots", f"{metric}_by_word_index_{self.timestamp}.png")
+            plot_path = os.path.join(self.output_dir, "plots", "switch_analysis", f"{metric}_by_word_index_{self.timestamp}.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
             plt.close()
             
@@ -881,22 +884,272 @@ class SwitchAnalysisPipeline:
             
             if window_results_flat:
                 window_df = pd.DataFrame(window_results_flat)
-                window_path = os.path.join(self.output_dir, "statistics", f"{metric}_by_window_{self.timestamp}.csv")
+                window_path = os.path.join(self.output_dir, "statistics", "switch_analysis", f"{metric}_by_window_{self.timestamp}.csv")
                 window_df.to_csv(window_path, index=False)
                 print(f"    Window {metric} data saved: {window_path}")
+    
+    def calculate_tpr_fpr_metrics(self):
+        """
+        Calculate TPR (True Positive Rate) and FPR (False Positive Rate) for each participant
+        and create summary statistics, based on the notebook code.
+        """
+        print("=" * 60)
+        print("CALCULATING TPR/FPR CONFUSION MATRIX METRICS")
+        print("=" * 60)
+        
+        # Calculate per-participant TPR/FPR for each method
+        all_tpr_fpr_results = []
+        
+        for method_name, col_name in self.switch_columns.items():
+            if col_name not in self.filtered_data.columns:
+                continue
+                
+            print(f"Calculating TPR/FPR for {method_name}...")
+            
+            participant_tpr_fpr = self._calculate_per_participant_tpr_fpr(
+                self.filtered_data, 
+                'switch_ground_truth', 
+                col_name,
+                method_name
+            )
+            
+            all_tpr_fpr_results.append(participant_tpr_fpr)
+        
+        # Combine all results
+        if all_tpr_fpr_results:
+            self.tpr_fpr_results = pd.concat(all_tpr_fpr_results, ignore_index=True)
+            
+            # Remove rows with NaN values
+            self.tpr_fpr_results = self.tpr_fpr_results.dropna(subset=['TPR', 'FPR'])
+            
+            print(f"\nTPR/FPR calculated for {len(self.tpr_fpr_results)} method-participant combinations")
+            
+            # Create summary statistics
+            self._create_tpr_fpr_summary()
+            
+            # Save results
+            self._save_tpr_fpr_results()
+        else:
+            print("No TPR/FPR results calculated")
+    
+    def _calculate_per_participant_tpr_fpr(self, data, true_col, pred_col, method_name):
+        """
+        Calculate TPR and FPR for each participant for a specific method.
+        Based on the calculate_per_participant_tpr_fpr function from the notebook.
+        """
+        participant_metrics = []
+        
+        for player_id in data['playerID'].unique():
+            participant_data = data[data['playerID'] == player_id]
+            
+            # Get true and predicted values
+            y_true = participant_data[true_col].values
+            y_pred = participant_data[pred_col].values
+            
+            # Skip if all values are the same (can't calculate TPR/FPR)
+            if len(np.unique(y_true)) < 2:
+                continue
+            
+            try:
+                # Calculate confusion matrix
+                cm = confusion_matrix(y_true, y_pred)
+                
+                # Handle different matrix sizes
+                if cm.shape == (2, 2):
+                    tn, fp, fn, tp = cm.ravel()
+                elif cm.shape == (1, 1):
+                    # All predictions were the same class
+                    if y_true[0] == 1:  # All true positives or false negatives
+                        if y_pred[0] == 1:
+                            tp, fn, fp, tn = len(y_true), 0, 0, 0
+                        else:
+                            tp, fn, fp, tn = 0, len(y_true), 0, 0
+                    else:  # All true negatives or false positives
+                        if y_pred[0] == 0:
+                            tp, fn, fp, tn = 0, 0, 0, len(y_true)
+                        else:
+                            tp, fn, fp, tn = 0, 0, len(y_true), 0
+                else:
+                    continue  # Skip unusual cases
+                
+                # Calculate TPR and FPR
+                tpr = tp / (tp + fn) if (tp + fn) > 0 else np.nan
+                fpr = fp / (fp + tn) if (fp + tn) > 0 else np.nan
+                
+                # Get category
+                category = participant_data['category'].iloc[0]
+                
+                participant_metrics.append({
+                    'playerID': player_id,
+                    'category': category,
+                    'method': method_name,
+                    'TPR': tpr,
+                    'FPR': fpr,
+                    'TP': tp,
+                    'FP': fp,
+                    'TN': tn,
+                    'FN': fn,
+                    'n_samples': len(participant_data)
+                })
+                
+            except Exception as e:
+                print(f"Error processing participant {player_id} for {method_name}: {e}")
+                continue
+        
+        return pd.DataFrame(participant_metrics)
+    
+    def _create_tpr_fpr_summary(self):
+        """
+        Create summary statistics for TPR and FPR by category and method.
+        """
+        print("Creating TPR/FPR summary statistics...")
+        
+        # Summary by category and method
+        tpr_fpr_summary = self.tpr_fpr_results.groupby(['category', 'method']).agg({
+            'TPR': ['mean', 'sem', 'std', 'count'],
+            'FPR': ['mean', 'sem', 'std', 'count']
+        }).round(4)
+        
+        # Flatten column names
+        tpr_fpr_summary.columns = ['_'.join(col).strip() for col in tpr_fpr_summary.columns]
+        self.tpr_fpr_summary = tpr_fpr_summary.reset_index()
+        
+        # Overall summary (across all categories)
+        overall_summary = self.tpr_fpr_results.groupby('method').agg({
+            'TPR': ['mean', 'sem', 'std'],
+            'FPR': ['mean', 'sem', 'std']
+        }).round(4)
+        
+        overall_summary.columns = ['_'.join(col).strip() for col in overall_summary.columns]
+        self.tpr_fpr_overall = overall_summary.reset_index()
+        
+        print("\nTPR/FPR Summary by Category and Method:")
+        print("=" * 50)
+        print(self.tpr_fpr_summary)
+        
+        print("\nOverall TPR/FPR Summary (All Categories):")
+        print("=" * 50)
+        print(self.tpr_fpr_overall)
+        
+        # Print overall means like in the notebook
+        print("\nOverall Per-Participant Means:")
+        print("=" * 40)
+        for method in self.tpr_fpr_overall['method']:
+            method_data = self.tpr_fpr_overall[self.tpr_fpr_overall['method'] == method].iloc[0]
+            print(f"{method}: TPR: {method_data['TPR_mean']:.3f} ± {method_data['TPR_sem']:.3f}, "
+                  f"FPR: {method_data['FPR_mean']:.3f} ± {method_data['FPR_sem']:.3f}")
+    
+    def _save_tpr_fpr_results(self):
+        """
+        Save TPR/FPR results to CSV files.
+        """
+        print("Saving TPR/FPR results...")
+        
+        # Save per-participant results
+        participant_path = os.path.join(self.output_dir, "statistics", f"participant_tpr_fpr_{self.timestamp}.csv")
+        self.tpr_fpr_results.to_csv(participant_path, index=False)
+        print(f"  Per-participant TPR/FPR saved: {participant_path}")
+        
+        # Save summary statistics
+        summary_path = os.path.join(self.output_dir, "statistics", f"tpr_fpr_summary_{self.timestamp}.csv")
+        self.tpr_fpr_summary.to_csv(summary_path, index=False)
+        print(f"  TPR/FPR summary by category saved: {summary_path}")
+        
+        # Save overall summary
+        overall_path = os.path.join(self.output_dir, "statistics", f"tpr_fpr_overall_{self.timestamp}.csv")
+        self.tpr_fpr_overall.to_csv(overall_path, index=False)
+        print(f"  Overall TPR/FPR summary saved: {overall_path}")
+
+def find_csv_files():
+    """
+    Find all CSV files in the current directory and subdirectories.
+    
+    Returns:
+    list, paths to CSV files
+    """
+    csv_files = []
+    
+    # Search in current directory and common subdirectories
+    search_dirs = ['.', 'data', 'process_for_labels', 'analysis_output']
+    
+    for search_dir in search_dirs:
+        if os.path.exists(search_dir):
+            for root, dirs, files in os.walk(search_dir):
+                for file in files:
+                    if file.endswith('.csv') and not file.startswith('.'):
+                        csv_files.append(os.path.join(root, file))
+    
+    return sorted(csv_files)
+
+def select_csv_file(csv_files):
+    """
+    Allow user to select a CSV file from the available options.
+    
+    Parameters:
+    csv_files: list, paths to CSV files
+    
+    Returns:
+    str, selected file path
+    """
+    if not csv_files:
+        print("No CSV files found in the current directory or subdirectories.")
+        return None
+    
+    print("Available CSV files:")
+    print("=" * 60)
+    
+    for i, file_path in enumerate(csv_files, 1):
+        # Get file size for display
+        try:
+            file_size = os.path.getsize(file_path)
+            size_mb = file_size / (1024 * 1024)
+            print(f"{i:2d}. {file_path} ({size_mb:.1f} MB)")
+        except:
+            print(f"{i:2d}. {file_path}")
+    
+    print("=" * 60)
+    
+    while True:
+        try:
+            choice = input(f"Select a file (1-{len(csv_files)}) or 'q' to quit: ").strip()
+            
+            if choice.lower() == 'q':
+                return None
+            
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(csv_files):
+                selected_file = csv_files[choice_num - 1]
+                print(f"Selected: {selected_file}")
+                return selected_file
+            else:
+                print(f"Please enter a number between 1 and {len(csv_files)}")
+                
+        except ValueError:
+            print("Please enter a valid number or 'q' to quit")
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            return None
 
 def main():
     """
     Main function to run the analysis.
     """
-    # Configuration
-    data_path = "data/data_with_word_predictions_llama_3.3_70b_prediction_20250815_044406.csv"
+    print("LLM Switch Analysis Pipeline")
+    print("=" * 60)
+    
+    # Find available CSV files
+    csv_files = find_csv_files()
+    
+    # Let user select file
+    data_path = select_csv_file(csv_files)
+    if data_path is None:
+        return
+    
     output_dir = "analysis_output"
     
-    # Check if data file exists
+    # Check if selected file exists (should exist, but double-check)
     if not os.path.exists(data_path):
-        print(f"Error: Data file not found at {data_path}")
-        print("Please check the file path and try again.")
+        print(f"Error: Selected file not found at {data_path}")
         return
     
     # Run analysis

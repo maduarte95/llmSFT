@@ -22,6 +22,9 @@ from config_system import ConfigManager, ModelConfig
 from anthropic_providers import AnthropicGroupLabeler, AnthropicProvider
 from together_providers import TogetherAIGroupLabeler, TogetherAIProvider
 
+# Import flexible data utilities
+from data_utils import get_data_file_for_script
+
 
 def load_environment(provider: str) -> str:
     """Load environment variables from .env file."""
@@ -45,45 +48,8 @@ def load_environment(provider: str) -> str:
 
 
 def find_data_file():
-    """Find data file with switchLLM column (output from classification)."""
-    current_dir = Path(".")
-    
-    patterns = [
-        "*switch*llm*.csv",
-        "*switchLLM*.csv", 
-        "*with_llm_switches*.csv",
-        "data_with_llm_switches*.csv"
-    ]
-    
-    for pattern in patterns:
-        files = list(current_dir.glob(pattern))
-        if files:
-            # Get the most recent file
-            file_path = max(files, key=lambda f: f.stat().st_mtime)
-            print(f"✅ Found data file: {file_path}")
-            return str(file_path)
-    
-    print("❌ Error: Could not find data file with switch classifications")
-    print("Expected file patterns:")
-    for pattern in patterns:
-        print(f"  - {pattern}")
-    
-    # List available CSV files
-    csv_files = list(current_dir.glob("*.csv"))
-    if csv_files:
-        print("\nAvailable CSV files:")
-        for f in csv_files:
-            print(f"  - {f}")
-        
-        while True:
-            filename = input("\nPlease enter the filename to use: ").strip()
-            if Path(filename).exists():
-                return filename
-            else:
-                print(f"File '{filename}' not found. Please try again.")
-    else:
-        print("No CSV files found in current directory.")
-        sys.exit(1)
+    """Find data file with switchLLM column using flexible selection."""
+    return get_data_file_for_script("labeling")
 
 
 class ConfigurableLabeler:

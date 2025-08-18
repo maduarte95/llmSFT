@@ -22,6 +22,9 @@ from config_system import ConfigManager, ModelConfig
 from anthropic_providers import AnthropicSwitchPredictor, AnthropicProvider
 from together_providers import TogetherAISwitchPredictor, TogetherAIProvider
 
+# Import flexible data utilities
+from data_utils import get_data_file_for_script
+
 
 def load_environment(provider: str) -> str:
     """Load environment variables from .env file."""
@@ -45,39 +48,8 @@ def load_environment(provider: str) -> str:
 
 
 def find_data_file():
-    """Find the filtered data CSV file."""
-    current_dir = Path(".")
-    
-    patterns = [
-        "filtered_data_for_analysis.csv",
-        "*filtered*analysis*.csv",
-        "*filtered*.csv",
-        "data_with_llm_switches*.csv"
-    ]
-    
-    for pattern in patterns:
-        files = list(current_dir.glob(pattern))
-        if files:
-            file_path = files[0]
-            print(f"✅ Found data file: {file_path}")
-            return str(file_path)
-    
-    print("❌ Error: Could not find data file")
-    csv_files = list(current_dir.glob("*.csv"))
-    if csv_files:
-        print("\nAvailable CSV files:")
-        for f in csv_files:
-            print(f"  - {f}")
-        
-        while True:
-            filename = input("\nPlease enter the filename to use: ").strip()
-            if Path(filename).exists():
-                return filename
-            else:
-                print(f"File '{filename}' not found. Please try again.")
-    else:
-        print("No CSV files found in current directory.")
-        sys.exit(1)
+    """Find the filtered data CSV file using flexible selection."""
+    return get_data_file_for_script("prediction")
 
 
 class ConfigurablePredictor:
