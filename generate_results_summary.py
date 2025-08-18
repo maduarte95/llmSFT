@@ -13,24 +13,79 @@ import numpy as np
 import os
 from datetime import datetime
 
-def load_latest_results(output_dir="analysis_output"):
+def find_summary_files(output_dir="analysis_output"):
     """
-    Load the most recent analysis results.
+    Find all summary statistics files in the output directory and subdirectories.
     """
     stats_dir = os.path.join(output_dir, "statistics")
+    summary_files = []
     
-    # Find the latest summary statistics file
-    summary_files = [f for f in os.listdir(stats_dir) if f.startswith("summary_statistics_")]
+    # Walk through all directories to find summary statistics files
+    for root, dirs, files in os.walk(stats_dir):
+        for f in files:
+            if f.startswith("summary_statistics_"):
+                full_path = os.path.join(root, f)
+                # Get relative path from stats_dir for display
+                rel_path = os.path.relpath(full_path, stats_dir)
+                summary_files.append((full_path, rel_path, f))
+    
+    return summary_files
+
+def choose_summary_file(output_dir="analysis_output"):
+    """
+    Let user choose which summary statistics file to analyze.
+    """
+    summary_files = find_summary_files(output_dir)
+    
     if not summary_files:
         raise FileNotFoundError("No summary statistics files found")
     
-    latest_file = sorted(summary_files)[-1]
-    summary_path = os.path.join(stats_dir, latest_file)
+    print("Found summary statistics files:")
+    print("=" * 60)
+    
+    for i, (full_path, rel_path, filename) in enumerate(summary_files, 1):
+        # Get file modification time for display
+        mod_time = datetime.fromtimestamp(os.path.getmtime(full_path))
+        print(f"{i}. {rel_path}")
+        print(f"   Modified: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+    
+    while True:
+        try:
+            choice = input(f"Enter your choice (1-{len(summary_files)}) or 'latest' for most recent: ").strip().lower()
+            
+            if choice == 'latest':
+                # Get the most recent file by modification time
+                latest_file = max(summary_files, key=lambda x: os.path.getmtime(x[0]))
+                return latest_file[0], latest_file[2]
+            
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(summary_files):
+                selected = summary_files[choice_num - 1]
+                return selected[0], selected[2]
+            else:
+                print(f"Please enter a number between 1 and {len(summary_files)}")
+        
+        except ValueError:
+            print("Please enter a valid number or 'latest'")
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            return None, None
+
+def load_chosen_results(output_dir="analysis_output"):
+    """
+    Load the user-chosen analysis results.
+    """
+    file_path, filename = choose_summary_file(output_dir)
+    
+    if file_path is None:
+        return None
     
     # Load the data
-    summary_stats = pd.read_csv(summary_path)
+    summary_stats = pd.read_csv(file_path)
     
-    print(f"Loaded results from: {latest_file}")
+    print(f"\nLoaded results from: {filename}")
+    print(f"Full path: {file_path}")
     return summary_stats
 
 def create_results_summary(summary_stats):
@@ -174,7 +229,11 @@ def main():
     """
     try:
         # Load results
-        summary_stats = load_latest_results()
+        summary_stats = load_chosen_results()
+        
+        if summary_stats is None:
+            print("No file selected. Exiting.")
+            return
         
         # Create summaries
         overall_means = create_results_summary(summary_stats)

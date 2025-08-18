@@ -129,8 +129,12 @@ class SwitchAnalysisPipeline:
     def _filter_extreme_participants(self, data):
         """
         Filter out participants with extreme switch rates or zero switches.
+        
+        IMPORTANT: Only filters based on HUMAN methods (retrospective and predicted switches)
+        and ground truth, NOT on LLM predictions. This ensures consistent sample sizes
+        across different model runs.
         """
-        print("\nFiltering extreme participants...")
+        print("\nFiltering extreme participants (based on HUMAN methods only)...")
         
         # Calculate switch rates per participant
         participant_stats = []
@@ -147,8 +151,14 @@ class SwitchAnalysisPipeline:
                     'total_words': total_words
                 }
                 
-                # Calculate switch counts and rates for each type
-                for method_name, col_name in self.switch_columns.items():
+                # Only calculate switch counts and rates for HUMAN methods (not LLM methods)
+                # This ensures consistent filtering across different model runs
+                human_methods = {
+                    'Human_Retrospective': 'switch',
+                    'Human_Predicted': 'predictedSwitch_shifted_int'
+                }
+                
+                for method_name, col_name in human_methods.items():
                     if col_name in player_data.columns:
                         switches = player_data[col_name].sum()
                         rate = switches / total_words
@@ -173,19 +183,22 @@ class SwitchAnalysisPipeline:
             upper_bound = Q3 + 1.5 * IQR
             return data[data[column_name] > upper_bound]['playerID'].tolist()
         
-        # Find participants with extreme rates
+        # Find participants with extreme rates - ONLY based on HUMAN methods
         extreme_participants = set()
-        rate_columns = [col for col in switch_rates_df.columns if col.endswith('_rate')]
         
-        for col in rate_columns:
+        # Only check human-based rate columns for outliers
+        human_rate_columns = ['Human_Retrospective_rate', 'Human_Predicted_rate', 'gt_rate']
+        
+        for col in human_rate_columns:
             if col in switch_rates_df.columns:
                 outliers = detect_outliers_iqr(switch_rates_df, col)
                 extreme_participants.update(outliers)
                 print(f"High outliers in {col}: {len(outliers)}")
         
-        # Find participants with zero switches in any measure
-        switch_columns = [col for col in switch_rates_df.columns if col.endswith('_switches')]
-        for col in switch_columns:
+        # Find participants with zero switches - ONLY based on HUMAN methods
+        human_switch_columns = ['Human_Retrospective_switches', 'Human_Predicted_switches', 'gt_switches']
+        
+        for col in human_switch_columns:
             if col in switch_rates_df.columns:
                 zero_switches = switch_rates_df[switch_rates_df[col] == 0]['playerID'].tolist()
                 extreme_participants.update(zero_switches)
@@ -1045,18 +1058,22 @@ class SwitchAnalysisPipeline:
         """
         print("Saving TPR/FPR results...")
         
+        # Create switch_analysis subdirectory if it doesn't exist
+        switch_analysis_dir = os.path.join(self.output_dir, "statistics", "switch_analysis")
+        os.makedirs(switch_analysis_dir, exist_ok=True)
+        
         # Save per-participant results
-        participant_path = os.path.join(self.output_dir, "statistics", f"participant_tpr_fpr_{self.timestamp}.csv")
+        participant_path = os.path.join(switch_analysis_dir, f"participant_tpr_fpr_{self.timestamp}.csv")
         self.tpr_fpr_results.to_csv(participant_path, index=False)
         print(f"  Per-participant TPR/FPR saved: {participant_path}")
         
         # Save summary statistics
-        summary_path = os.path.join(self.output_dir, "statistics", f"tpr_fpr_summary_{self.timestamp}.csv")
+        summary_path = os.path.join(switch_analysis_dir, f"tpr_fpr_summary_{self.timestamp}.csv")
         self.tpr_fpr_summary.to_csv(summary_path, index=False)
         print(f"  TPR/FPR summary by category saved: {summary_path}")
         
         # Save overall summary
-        overall_path = os.path.join(self.output_dir, "statistics", f"tpr_fpr_overall_{self.timestamp}.csv")
+        overall_path = os.path.join(switch_analysis_dir, f"tpr_fpr_overall_{self.timestamp}.csv")
         self.tpr_fpr_overall.to_csv(overall_path, index=False)
         print(f"  Overall TPR/FPR summary saved: {overall_path}")
 

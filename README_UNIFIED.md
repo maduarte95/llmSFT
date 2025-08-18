@@ -8,6 +8,11 @@ This project provides comprehensive LLM-based analysis of verbal fluency data wi
 - **Switch classification**: Identify thematic group boundaries in word sequences
 - **Switch prediction**: Predict whether the next word will start a new group
 - **Group labeling**: Generate descriptive labels for word groups
+- **Comprehensive analysis pipeline** (**NEW!**): Automated statistical analysis and visualization
+  - Per-participant and summary metrics (accuracy, precision, recall, F1, TPR/FPR)
+  - Multiple baseline comparisons (ZeroR, Random)
+  - 20+ publication-ready visualizations with confidence intervals
+  - Word index window analysis for temporal performance trends
 - **Custom prompt templates**: Fully customizable prompts via YAML configs
 - **Batch processing**: Efficient processing of large datasets
 - **Configuration-driven**: Reproducible experiments with YAML configs
@@ -99,6 +104,15 @@ uv run python run_llm_labeling_unified.py
 uv run python run_llm_labeling_with_config.py
 ```
 
+#### Analysis & Visualization (**NEW!**)
+```bash
+# Comprehensive analysis pipeline with visualizations and statistics
+uv run python analysis_pipeline.py
+
+# Generate readable summary of results  
+uv run python generate_results_summary.py
+```
+
 #### Testing & Validation
 ```bash
 # Test custom prompt templates
@@ -147,6 +161,17 @@ uv run python test_labeling_config.py
 ### Utility Scripts
 - `inspect_batch_response.py` - Debug batch processing issues
 - `config_system.py` - Configuration management system
+
+### Analysis & Visualization Scripts (**NEW!**)
+- `analysis_pipeline.py` - **Comprehensive analysis pipeline with visualizations and statistics**
+  - Automated data filtering and preprocessing
+  - Per-participant and summary metrics (accuracy, precision, recall, F1)
+  - TPR/FPR confusion matrix analysis
+  - Baseline comparisons (ZeroR, Random)
+  - Multiple visualization types (bar plots, line plots with confidence intervals)
+  - Word index window analysis for all metrics
+  - Timestamped outputs for reproducibility
+- `generate_results_summary.py` - Generate readable summary reports of analysis results
 
 ## Provider Comparison
 
@@ -432,6 +457,30 @@ p001,dog,0,animals,1,pets
 p001,cat,1,animals,0,pets
 p001,lion,2,animals,1,wild animals
 ```
+
+#### Analysis Pipeline Output (**NEW!**)
+**Per-Participant Metrics:** `participant_metrics_{timestamp}.csv`
+```csv
+playerID,category,method,accuracy,precision,recall,f1,n_samples
+p001,animals,Human_Predicted,0.756,0.45,0.62,0.52,45
+p001,animals,LLM_Predicted,0.822,0.67,0.58,0.62,45
+```
+
+**TPR/FPR Confusion Matrix:** `participant_tpr_fpr_{timestamp}.csv` 
+```csv
+playerID,category,method,TPR,FPR,TP,FP,TN,FN,n_samples
+p001,animals,Human_Predicted,0.625,0.15,10,3,17,6,36
+p001,animals,LLM_Predicted,0.750,0.12,12,2,15,7,36
+```
+
+**Summary Statistics:** `summary_statistics_{timestamp}.csv`, `tpr_fpr_summary_{timestamp}.csv`
+
+**Window Analysis:** `{metric}_by_window_{timestamp}.csv` (for accuracy, precision, recall, f1)
+
+**Visualizations:** 20+ plots in PNG format including:
+- Overall comparison plots (accuracy, precision, recall, F1)
+- Category-wise performance plots
+- Word index window trends with confidence intervals
 
 ### ⚙️ Configuration Files
 
