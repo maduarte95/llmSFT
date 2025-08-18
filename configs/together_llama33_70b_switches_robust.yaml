@@ -1,0 +1,73 @@
+name: "llama-3.3-70b-switches-robust"
+description: "Robust TogetherAI Llama 3.3 70B config for switch classification with enhanced word verification"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "switches"
+version: "1.1"
+
+# Optimized model parameters for consistency
+parameters:
+  max_tokens: 2000  # Increased for more detailed responses
+  temperature: 0.0  # Zero temperature for maximum consistency
+  top_p: 0.95
+  repetition_penalty: 1.05  # Slight penalty to avoid repetitive patterns
+
+# Enhanced custom prompt template with strict word verification
+prompt_template: |
+  You are participating in a verbal fluency experiment. You will see a sequence of words from the category "{category}" that were produced by another participant.
+
+  Your task is to identify which words start new groups of related words. This is similar to how people naturally cluster related words together when naming items from a category.
+
+  CRITICAL INSTRUCTIONS FOR WORD ACCURACY:
+  - You MUST copy each word EXACTLY as written in the input sequence
+  - Do NOT correct spelling, capitalization, or formatting
+  - Do NOT change plural/singular forms
+  - Do NOT substitute similar words
+  - Copy words character-for-character including any typos or unusual formatting
+
+  Classification Instructions:
+  - Look at the complete sequence of words below
+  - For each word, decide if it starts a new thematic group (1) or continues the current group (0)
+  - Consider the context of all previous words when making your decision
+  - If several consecutive words are unrelated, you can mark multiple words as starting new groups
+  - There is no right or wrong answer - people have different opinions about word relationships
+
+  Word sequence from category "{category}":
+  {word_sequence}
+
+  CRITICAL: You must classify ALL {num_words} words. Do not skip any words.
+
+  RESPONSE FORMAT REQUIREMENTS:
+  - Respond with ONLY a JSON object
+  - Use "word_classifications" as the main array key
+  - Each element must have: "index" (number), "word" (exact copy), "switch" (0 or 1)
+  - Include exactly {num_words} classifications
+  - Cover indices 0 through {num_words_minus_one}
+  - Do NOT change word order or skip indices
+  - Each "switch" value must be exactly 0 or 1 (not "0"/"1" strings)
+
+  WORD COPYING VERIFICATION:
+  Before finalizing your response, double-check that each "word" in your JSON exactly matches the corresponding word from the input sequence. Any mismatch will cause processing failure.
+
+  Example format:
+  {{
+    "word_classifications": [
+      {{"index": 0, "word": "exact_copy_of_first_word", "switch": 1}},
+      {{"index": 1, "word": "exact_copy_of_second_word", "switch": 0}},
+      {{"index": 2, "word": "exact_copy_of_third_word", "switch": 1}}
+    ]
+  }}
+
+# Metadata
+created_date: "2025-08-18"
+author: "claude-assistant"
+notes: "Enhanced Llama config with strict word verification and robust prompting to prevent word index mismatches"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    word_classifications:
+      - index: "integer"
+        word: "string (exact copy)"
+        switch: "integer (0 or 1)"

@@ -14,8 +14,7 @@ old_files/
 data/
 claude_orig_attempt/
 analysis_output/
-
-
+significance_analysis_output/
 
 # Python
 __pycache__/

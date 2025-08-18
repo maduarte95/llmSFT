@@ -1,0 +1,44 @@
+name: "claude-sonnet-4-switches-single-word"
+description: "Anthropic Claude Sonnet 4 optimized for single-word classification"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "switches"
+version: "1.0"
+
+# Optimized parameters for single-word classification
+parameters:
+  max_tokens: 150  # Much lower since only classifying one word
+  temperature: 0.0  # Zero for maximum consistency
+
+# Custom prompt template optimized for single-word classification
+prompt_template: |
+  You are analyzing word sequences from a verbal fluency experiment for the category "{category}".
+
+  Task: Classify ONE specific word as either starting a new thematic group (1) or continuing the current group (0).
+
+  Full sequence:
+  {word_sequence}
+
+  FOCUS ON: Word {target_word_index} = "{target_word}"
+
+  Does "{target_word}" start a NEW theme (1) or CONTINUE the current theme (0)?
+
+  Base your decision on how "{target_word}" relates to the preceding words in the sequence.
+
+  Response format:
+  {{
+    "switch": 0_or_1,
+    "reasoning_switch": "concise explanation"
+  }}
+
+# Metadata
+created_date: "2025-08-18"
+author: "claude-assistant"
+notes: "Optimized for robust single-word classification with Sonnet 4's precision"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    switch: "integer (0 or 1)"
+    reasoning_switch: "string"

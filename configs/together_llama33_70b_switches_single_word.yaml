@@ -1,0 +1,46 @@
+name: "llama-3.3-70b-switches-single-word"
+description: "TogetherAI Llama 3.3 70B optimized for single-word classification"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "switches"
+version: "1.0"
+
+# Optimized parameters for single-word classification
+parameters:
+  max_tokens: 200  # Much lower since only classifying one word
+  temperature: 0.0  # Zero for maximum consistency
+  top_p: 0.95
+  repetition_penalty: 1.0
+
+# Custom prompt template optimized for single-word classification
+prompt_template: |
+  You are analyzing a verbal fluency task where participants name words from the category "{category}".
+
+  Your task: Determine if ONE specific word starts a new thematic group or continues the current group.
+
+  Complete word sequence:
+  {word_sequence}
+
+  TARGET: Word {target_word_index} ("{target_word}")
+
+  Question: Does "{target_word}" start a NEW thematic group (1) or CONTINUE the current group (0)?
+
+  Consider the thematic relationship between "{target_word}" and the words that came before it.
+
+  Respond with JSON only:
+  {{
+    "switch": 0_or_1,
+    "reasoning_switch": "brief explanation"
+  }}
+
+# Metadata
+created_date: "2025-08-18"
+author: "claude-assistant"
+notes: "Optimized for robust single-word classification approach with minimal tokens"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    switch: "integer (0 or 1)"
+    reasoning_switch: "string"
