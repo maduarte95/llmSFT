@@ -800,14 +800,18 @@ class StatisticalSignificanceAnalyzer:
         
         return comparison_results
     
-    def create_two_panel_f1_plot(self, comparison_results: List[Dict[str, Any]]):
+    def create_two_panel_plot(self, comparison_results: List[Dict[str, Any]], metric: str = 'f1'):
         """
-        Create the exact two-panel F1 plot from analysis_pipeline with significance markers.
+        Create the exact two-panel plot from analysis_pipeline with significance markers.
         Left: Switch Prediction (Human_Predicted vs LLM_Predicted vs baselines)  
         Right: Switch Identification (Human_Retrospective vs LLM_Retrospective vs baselines)
+        
+        Args:
+            comparison_results: List of comparison dictionaries with p-values and test info
+            metric: str, metric to plot (f1, recall, etc.)
         """
         print(f"\n{'='*60}")
-        print("CREATING TWO-PANEL F1 SIGNIFICANCE PLOT")
+        print(f"CREATING TWO-PANEL {metric.upper()} SIGNIFICANCE PLOT")
         print("="*60)
         
         if not STATANNOTATIONS_AVAILABLE:
@@ -820,11 +824,11 @@ class StatisticalSignificanceAnalyzer:
         identification_methods = ['Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline']
         
         # Calculate summary statistics for each method
-        f1_data = self.paired_data['f1'].copy()
+        metric_data = self.paired_data[metric].copy()
         summary_stats = []
         for method in self.all_methods:
-            if method in f1_data.columns:
-                values = f1_data[method].dropna()
+            if method in metric_data.columns:
+                values = metric_data[method].dropna()
                 summary_stats.append({
                     'method': method,
                     'mean': values.mean(),
@@ -852,40 +856,43 @@ class StatisticalSignificanceAnalyzer:
         prediction_data = summary_df[summary_df['method'].isin(prediction_methods)]
         self._create_panel_with_significance(ax1, prediction_data, prediction_methods, 
                                            colors, comparison_results, 
-                                           'Switch Prediction F1 (All Categories)',
-                                           panel_type='prediction')
+                                           f'Switch Prediction {metric.upper()} (All Categories)',
+                                           panel_type='prediction', metric=metric)
         
         # RIGHT PANEL: Switch Identification  
         identification_data = summary_df[summary_df['method'].isin(identification_methods)]
         self._create_panel_with_significance(ax2, identification_data, identification_methods,
                                             colors, comparison_results,
-                                            'Switch Identification F1 (All Categories)', 
-                                            panel_type='identification')
+                                            f'Switch Identification {metric.upper()} (All Categories)', 
+                                            panel_type='identification', metric=metric)
         
         plt.tight_layout()
         
         # Save plot
         plot_path = os.path.join(self.output_dir, "plots", 
-                                f"f1_two_panel_significance_{self.timestamp}.png")
+                                f"{metric}_two_panel_significance_{self.timestamp}.png")
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
         
-        print(f"Two-panel F1 significance plot saved: {plot_path}")
+        print(f"Two-panel {metric.upper()} significance plot saved: {plot_path}")
     
     def _create_panel_with_significance(self, ax, panel_data, methods, colors, 
-                                      comparison_results, title, panel_type):
+                                      comparison_results, title, panel_type, metric='f1'):
         """
         Create one panel of the two-panel plot with significance annotations.
+        
+        Args:
+            metric: str, metric to plot (f1, recall, etc.)
         """
         # Prepare data for seaborn/statannotations (following tutorial pattern)
         plot_data = []
-        f1_data = self.paired_data['f1']
+        metric_data = self.paired_data[metric]
         
         for method in methods:
-            if method in f1_data.columns:
-                values = f1_data[method].dropna()
+            if method in metric_data.columns:
+                values = metric_data[method].dropna()
                 for value in values:
-                    plot_data.append({'method': method, 'f1': value})
+                    plot_data.append({'method': method, metric: value})
         
         plot_df = pd.DataFrame(plot_data)
         
@@ -896,7 +903,7 @@ class StatisticalSignificanceAnalyzer:
         plotting_parameters = {
             'data': plot_df,
             'x': 'method',
-            'y': 'f1',
+            'y': metric,
             'palette': method_palette
         }
         
@@ -971,7 +978,7 @@ class StatisticalSignificanceAnalyzer:
         
         # Customize plot (matching analysis_pipeline format exactly)
         ax.set_title(title, fontweight='bold', fontsize=14)
-        ax.set_ylabel('F1 Score', fontsize=12)
+        ax.set_ylabel(f'{metric.upper()} Score', fontsize=12)
         ax.set_xlabel('')
         ax.set_xticklabels([m.replace('_', '\n') for m in methods])
         ax.set_ylim(0, 1)
@@ -1050,262 +1057,6 @@ class StatisticalSignificanceAnalyzer:
         
         print(f"Basic two-panel F1 plot saved: {plot_path}")
 
-    def create_f1_significance_plot(self, comparison_results: List[Dict[str, Any]], 
-                                  categories: Optional[List[str]] = None):
-        """
-        Create F1 score bar plot with statistical significance annotations.
-        
-        Parameters:
-        comparison_results: List of comparison result dictionaries
-        categories: Optional list of categories to plot (default: all)
-        """
-        print(f"\n{'='*60}")
-        print("CREATING F1 SIGNIFICANCE PLOT")
-        print("="*60)
-        
-        if not STATANNOTATIONS_AVAILABLE:
-            print("Warning: statannotations not available. Creating plot without significance markers.")
-            self._create_basic_f1_plot()
-            return
-        
-        # Prepare data for plotting
-        f1_data = self.paired_data['f1'].copy()
-        
-        # Calculate summary statistics for each method
-        summary_stats = []
-        for method in self.main_methods:
-            if method in f1_data.columns:
-                values = f1_data[method].dropna()
-                summary_stats.append({
-                    'method': method,
-                    'mean': values.mean(),
-                    'sem': values.std() / np.sqrt(len(values)),
-                    'std': values.std(),
-                    'n': len(values)
-                })
-        
-        summary_df = pd.DataFrame(summary_stats)
-        
-        # Create plot
-        fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Define colors
-        colors = {
-            'Human_Retrospective': '#ff4444',   # Red  
-            'Human_Predicted': '#ff7f7f',      # Light red
-            'LLM_Retrospective': '#4444ff',     # Blue
-            'LLM_Predicted': '#7fbfff',        # Light blue
-            'Random_Baseline': '#cccccc',       # Light gray
-            'ZeroR_Baseline': '#999999'        # Dark gray
-        }
-        
-        # Create bar plot
-        x_pos = np.arange(len(summary_df))
-        bars = ax.bar(x_pos, summary_df['mean'], 
-                     yerr=summary_df['sem'],
-                     color=[colors.get(m, '#cccccc') for m in summary_df['method']],
-                     capsize=5, alpha=0.8, edgecolor='black', linewidth=1)
-        
-        # Customize basic plot
-        ax.set_title('F1 Score Comparison with Statistical Significance', 
-                    fontweight='bold', fontsize=16)
-        ax.set_ylabel('F1 Score', fontsize=14)
-        ax.set_xlabel('Method', fontsize=14)
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels([m.replace('_', '\n') for m in summary_df['method']], 
-                          fontsize=12)
-        ax.set_ylim(0, max(summary_df['mean'] + summary_df['sem']) * 1.3)
-        ax.grid(axis='y', alpha=0.3)
-        
-        # Add value labels on bars
-        for bar, mean, sem in zip(bars, summary_df['mean'], summary_df['sem']):
-            ax.text(bar.get_x() + bar.get_width()/2, mean + sem + 0.01,
-                   f'{mean:.3f}', ha='center', va='bottom', fontweight='bold')
-        
-        # Prepare pairs for significance testing
-        significant_pairs = []
-        for result in comparison_results:
-            if (result['significant'] and 
-                result['method1'] in self.main_methods and 
-                result['method2'] in self.main_methods):
-                significant_pairs.append((result['method1'], result['method2']))
-        
-        print(f"Adding {len(significant_pairs)} significant pair annotations...")
-        
-        if significant_pairs:
-            try:
-                # Prepare data for statannotations
-                # Convert wide format to long format for statannotations
-                plot_data = []
-                for method in self.main_methods:
-                    if method in f1_data.columns:
-                        values = f1_data[method].dropna()
-                        for value in values:
-                            plot_data.append({'method': method, 'f1': value})
-                
-                plot_df = pd.DataFrame(plot_data)
-                
-                # Create new plot with seaborn for compatibility with statannotations
-                fig, ax = plt.subplots(figsize=(12, 8))
-                
-                # Create seaborn bar plot
-                sns.barplot(data=plot_df, x='method', y='f1', ax=ax,
-                           palette=[colors.get(m, '#cccccc') for m in self.main_methods],
-                           capsize=0.1, errwidth=2, alpha=0.8)
-                
-                # Initialize annotator
-                annotator = Annotator(ax, significant_pairs, data=plot_df, 
-                                    x='method', y='f1')
-                
-                # Configure annotations - no test specified since we're providing our own p-values
-                annotator.configure(text_format='star', loc='outside', verbose=False)
-                
-                # Manually set p-values for significant pairs
-                pvalues = []
-                for pair in significant_pairs:
-                    for result in comparison_results:
-                        if ((result['method1'] == pair[0] and result['method2'] == pair[1]) or
-                            (result['method1'] == pair[1] and result['method2'] == pair[0])):
-                            pvalues.append(result['p_corrected'])
-                            break
-                
-                # Apply annotations
-                if pvalues:
-                    annotator.set_pvalues(pvalues)
-                    annotator.annotate()
-                
-                # Customize plot
-                ax.set_title('F1 Score Comparison with Statistical Significance', 
-                           fontweight='bold', fontsize=16)
-                ax.set_ylabel('F1 Score', fontsize=14)
-                ax.set_xlabel('Method', fontsize=14)
-                ax.set_xticklabels([m.replace('_', '\n') for m in self.main_methods])
-                ax.grid(axis='y', alpha=0.3)
-                
-            except Exception as e:
-                print(f"Error creating statannotations plot: {e}")
-                print("Creating basic plot instead...")
-                self._create_basic_f1_plot()
-                return
-        
-        plt.tight_layout()
-        
-        # Save plot
-        plot_path = os.path.join(self.output_dir, "plots", 
-                                f"f1_significance_plot_{self.timestamp}.png")
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"F1 significance plot saved: {plot_path}")
-        
-        # Create additional effect size plot
-        self._create_effect_size_plot(comparison_results)
-    
-    def _create_basic_f1_plot(self):
-        """
-        Create basic F1 plot without statannotations (fallback).
-        """
-        f1_data = self.paired_data['f1'].copy()
-        
-        # Calculate summary statistics
-        summary_stats = []
-        for method in self.main_methods:
-            if method in f1_data.columns:
-                values = f1_data[method].dropna()
-                summary_stats.append({
-                    'method': method,
-                    'mean': values.mean(),
-                    'sem': values.std() / np.sqrt(len(values))
-                })
-        
-        summary_df = pd.DataFrame(summary_stats)
-        
-        # Create plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        colors = {
-            'Human_Retrospective': '#ff4444',
-            'Human_Predicted': '#ff7f7f',
-            'LLM_Retrospective': '#4444ff',
-            'LLM_Predicted': '#7fbfff',
-        }
-        
-        x_pos = np.arange(len(summary_df))
-        bars = ax.bar(x_pos, summary_df['mean'], 
-                     yerr=summary_df['sem'],
-                     color=[colors.get(m, '#cccccc') for m in summary_df['method']],
-                     capsize=5, alpha=0.8)
-        
-        ax.set_title('F1 Score Comparison', fontweight='bold', fontsize=14)
-        ax.set_ylabel('F1 Score')
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels([m.replace('_', '\n') for m in summary_df['method']])
-        ax.set_ylim(0, 1)
-        ax.grid(axis='y', alpha=0.3)
-        
-        # Add value labels
-        for bar, mean, sem in zip(bars, summary_df['mean'], summary_df['sem']):
-            ax.text(bar.get_x() + bar.get_width()/2, mean + sem + 0.02,
-                   f'{mean:.3f}', ha='center', va='bottom')
-        
-        plt.tight_layout()
-        plot_path = os.path.join(self.output_dir, "plots", 
-                                f"f1_basic_plot_{self.timestamp}.png")
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Basic F1 plot saved: {plot_path}")
-    
-    def _create_effect_size_plot(self, comparison_results: List[Dict[str, Any]]):
-        """
-        Create effect size visualization.
-        """
-        # Filter for main method comparisons
-        main_results = [r for r in comparison_results 
-                       if r['method1'] in self.main_methods and r['method2'] in self.main_methods]
-        
-        if not main_results:
-            return
-        
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Prepare data
-        pair_labels = [f"{r['method1']}\nvs\n{r['method2']}" for r in main_results]
-        effect_sizes = [abs(r['effect_size']) for r in main_results]  # Use absolute values
-        colors = ['red' if r['significant'] else 'gray' for r in main_results]
-        
-        # Create bar plot
-        bars = ax.bar(range(len(pair_labels)), effect_sizes, color=colors, alpha=0.7)
-        
-        # Customize plot
-        ax.set_title('Effect Sizes for Method Comparisons', fontweight='bold', fontsize=14)
-        ax.set_ylabel('|Effect Size|')
-        ax.set_xlabel('Method Pairs')
-        ax.set_xticks(range(len(pair_labels)))
-        ax.set_xticklabels(pair_labels, rotation=45, ha='right')
-        
-        # Add effect size interpretation lines
-        ax.axhline(y=0.2, color='green', linestyle='--', alpha=0.5, label='Small (0.2)')
-        ax.axhline(y=0.5, color='orange', linestyle='--', alpha=0.5, label='Medium (0.5)')
-        ax.axhline(y=0.8, color='red', linestyle='--', alpha=0.5, label='Large (0.8)')
-        
-        ax.legend()
-        ax.grid(axis='y', alpha=0.3)
-        
-        # Add value labels
-        for bar, effect_size, result in zip(bars, effect_sizes, main_results):
-            ax.text(bar.get_x() + bar.get_width()/2, effect_size + 0.05,
-                   f'{effect_size:.3f}\n({result["effect_size_name"]})',
-                   ha='center', va='bottom', fontsize=9)
-        
-        plt.tight_layout()
-        plot_path = os.path.join(self.output_dir, "plots", 
-                                f"effect_sizes_{self.timestamp}.png")
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Effect size plot saved: {plot_path}")
-    
     def save_results(self, comparison_results: List[Dict[str, Any]]):
         """
         Save statistical analysis results to CSV files.
@@ -1376,10 +1127,7 @@ class StatisticalSignificanceAnalyzer:
         comparison_results = self.correct_multiple_comparisons_by_task(comparison_results, method='holm')
         
         # Step 4: Create visualizations
-        self.create_two_panel_f1_plot(comparison_results)
-        
-        # Also create the general comparison plot
-        self.create_f1_significance_plot(comparison_results)
+        self.create_two_panel_plot(comparison_results, metric)
         
         # Step 5: Save results
         self.save_results(comparison_results)
