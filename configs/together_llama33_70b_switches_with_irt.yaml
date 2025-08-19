@@ -1,0 +1,44 @@
+name: "llama-3.3-70b-switches-irt"
+description: "Llama 3.3 70B switch classification with IRT timing data"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "switches"
+version: "1.0"
+
+# Name must be "anthropic" or "together"
+# Provider must be "anthropic" or "together"
+# Type must be "switches", "labels", or "preds"
+
+# Model parameters - all optional, defaults depend on provider
+parameters:
+  max_tokens: 1500 
+  temperature: 0.0  
+  top_p: 0.9
+
+# Include inter-item response times (IRT) in prompts
+# When true, prompts will show timing data: "0. cat (2800ms)"
+# When false or omitted, only shows words: "0. cat"
+include_irt: true
+
+# Custom prompt template (optional, overrides default)
+# Available variables when include_irt is true:
+  # - {category} - The verbal fluency category
+  # - {word_sequence} - Formatted word list with timing ("0. cat (2800ms)\n1. dog (834ms)")
+  # - {target_word_index} - Index of word being classified  
+  # - {target_word} - The word being classified
+  # - {num_words} - Number of words in sequence
+  # - {irt_context} - Description of IRT timing context
+  
+prompt_template: null 
+
+# Metadata
+created_date: "2025-08-19"
+author: "mariana"
+notes: "Enhanced switch classification using inter-item response times to improve accuracy. Longer IRTs may indicate cognitive switches between thematic groups."
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    switch: "integer (0 or 1)"
+    reasoning_switch: "string explaining the decision"

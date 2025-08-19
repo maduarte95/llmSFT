@@ -7,7 +7,7 @@ version: "1.0"
 
 # Optimized parameters for single-word classification
 parameters:
-  max_tokens: 200  # Much lower since only classifying one word
+  max_tokens: 200  
   temperature: 0.0  # Zero for maximum consistency
   top_p: 0.95
   repetition_penalty: 1.0
@@ -16,7 +16,7 @@ parameters:
 prompt_template: |
   You are analyzing a verbal fluency task where participants name words from the category "{category}".
 
-  Your task: Determine if ONE specific word starts a new thematic group or continues the current group.
+  Your task is to determine if ONE specific word starts a new thematic group or continues the current group.
 
   Complete word sequence:
   {word_sequence}
@@ -35,7 +35,7 @@ prompt_template: |
 
 # Metadata
 created_date: "2025-08-18"
-author: "claude-assistant"
+author: "mariana"
 notes: "Optimized for robust single-word classification approach with minimal tokens"
 
 # Expected output format

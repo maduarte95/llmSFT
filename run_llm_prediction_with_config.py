@@ -33,17 +33,17 @@ def load_environment(provider: str) -> str:
     if provider == "anthropic":
         api_key = os.getenv('ANTHROPIC_API_KEY')
         if not api_key:
-            print("❌ Error: ANTHROPIC_API_KEY not found in .env file")
+            print("ERROR: Error: ANTHROPIC_API_KEY not found in .env file")
             sys.exit(1)
     elif provider == "together":
         api_key = os.getenv('TOGETHER_API_KEY')
         if not api_key:
-            print("❌ Error: TOGETHER_API_KEY not found in .env file")
+            print("ERROR: Error: TOGETHER_API_KEY not found in .env file")
             sys.exit(1)
     else:
         raise ValueError(f"Unknown provider: {provider}")
     
-    print(f"✅ {provider.title()} API key loaded successfully")
+    print(f"SUCCESS: {provider.title()} API key loaded successfully")
     return api_key
 
 
@@ -58,6 +58,9 @@ class ConfigurablePredictor:
     def __init__(self, config: ModelConfig, api_key: str):
         self.config = config
         self.api_key = api_key
+        
+        # Check if IRT timing should be included (backward compatible)
+        self.include_irt = getattr(config, 'include_irt', False)
         
         # Create base predictor with config
         if config.provider == "anthropic":
@@ -75,6 +78,9 @@ class ConfigurablePredictor:
         else:
             raise ValueError(f"Unknown provider: {config.provider}")
         
+        # Pass IRT setting to predictor
+        self.predictor.include_irt = self.include_irt
+        
         # Apply custom parameters
         self.predictor.provider.default_params = config.parameters
     
@@ -91,7 +97,8 @@ class ConfigurablePredictor:
             # Use configurable prompt (will use custom template if available)
             prompt = self.predictor.create_switch_prediction_prompt(
                 chunk['chunk_words'], 
-                chunk['category']
+                chunk['category'],
+                chunk.get('chunk_irt_values')  # Pass IRT values if available
             )
             custom_id = f"pred_{self.config.name}_{chunk['chunk_id']:06d}"
             
@@ -134,9 +141,9 @@ class ConfigurablePredictor:
         print(f"Parameters: {self.config.parameters}")
         
         if self.config.prompt_template:
-            print("✅ Using custom prompt template from config")
+            print("SUCCESS: Using custom prompt template from config")
         else:
-            print("📝 Using default prompt template")
+            print(" Using default prompt template")
         
         # Prepare requests with config parameters
         batch_requests = self.prepare_batch_requests(data)
@@ -147,7 +154,7 @@ class ConfigurablePredictor:
         
         # Run dry run test
         if not self.predictor.dry_run_test(data, num_tests=min(2, len(batch_requests))):
-            print("❌ Dry run failed. Please check your configuration and data.")
+            print("ERROR: Dry run failed. Please check your configuration and data.")
             return pd.DataFrame(), None, {}
         
         # Create batch
@@ -191,42 +198,42 @@ def format_duration(seconds):
 def main():
     """Main execution function."""
     print_separator()
-    print("🔮 Configuration-Driven LLM Switch Prediction")
+    print(" Configuration-Driven LLM Switch Prediction")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print_separator()
     
     # Step 1: Load configurations
-    print("\n🔧 Step 1: Loading configurations...")
+    print("\n Step 1: Loading configurations...")
     config_manager = ConfigManager()
     config_manager.print_config_summary()
     
     # Step 2: Select configuration
-    print("\n🤖 Step 2: Configuration selection...")
+    print("\n Step 2: Configuration selection...")
     
     # Option to specify config via command line
     if len(sys.argv) > 1:
         config_name = sys.argv[1]
         config = config_manager.get_config(config_name)
         if not config:
-            print(f"❌ Configuration '{config_name}' not found")
+            print(f"ERROR: Configuration '{config_name}' not found")
             sys.exit(1)
-        print(f"✅ Using config from command line: {config_name}")
+        print(f"SUCCESS: Using config from command line: {config_name}")
     else:
         # Interactive selection
         config = config_manager.interactive_config_selector("prediction")
         if not config:
-            print("❌ No configuration selected")
+            print("ERROR: No configuration selected")
             sys.exit(1)
     
     # Validate configuration
     issues = config_manager.validate_config(config)
     if issues:
-        print(f"❌ Configuration validation failed:")
+        print(f"ERROR: Configuration validation failed:")
         for issue in issues:
             print(f"  - {issue}")
         sys.exit(1)
     
-    print(f"✅ Selected configuration: {config.name}")
+    print(f"SUCCESS: Selected configuration: {config.name}")
     print(f"   Provider: {config.provider}")
     print(f"   Model: {config.model}")
     print(f"   Parameters: {config.parameters}")
@@ -236,16 +243,16 @@ def main():
         print(f"   Custom prompt: No (using default)")
     
     # Step 3: Load environment
-    print(f"\n📁 Step 3: Loading {config.provider.title()} environment...")
+    print(f"\n Step 3: Loading {config.provider.title()} environment...")
     api_key = load_environment(config.provider)
     
     # Step 4: Load data
-    print("\n📊 Step 4: Loading data...")
+    print("\n Step 4: Loading data...")
     data_file = find_data_file()
     
     try:
         data = pd.read_csv(data_file)
-        print(f"✅ Data loaded successfully")
+        print(f"SUCCESS: Data loaded successfully")
         print(f"   Shape: {data.shape}")
         print(f"   Unique players: {data['playerID'].nunique()}")
         print(f"   Categories: {list(data['category'].unique())}")
@@ -263,27 +270,27 @@ def main():
         print(f"   Expected prediction chunks: {prediction_chunks:,}")
         
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
+        print(f"ERROR: Error loading data: {e}")
         sys.exit(1)
     
     # Step 5: Create configurable predictor
-    print(f"\n🤖 Step 5: Initializing predictor with config...")
+    print(f"\n Step 5: Initializing predictor with config...")
     try:
         predictor = ConfigurablePredictor(config, api_key)
-        print("✅ Predictor initialized with configuration")
+        print("SUCCESS: Predictor initialized with configuration")
     except Exception as e:
-        print(f"❌ Error initializing predictor: {e}")
+        print(f"ERROR: Error initializing predictor: {e}")
         sys.exit(1)
     
     # Step 6: Run prediction
-    print(f"\n🚀 Step 6: Running prediction...")
+    print(f"\n Step 6: Running prediction...")
     start_time = time.time()
     
     try:
         result_data, batch_id, additional_info = predictor.run_prediction(data)
         
         if result_data.empty:
-            print("❌ No prediction results returned")
+            print("ERROR: No prediction results returned")
             sys.exit(1)
         
         # Generate output filename with config name
@@ -292,10 +299,10 @@ def main():
         output_file = f"data_with_predictions_{safe_config_name}_{timestamp}.csv"
         
         result_data.to_csv(output_file, index=False)
-        print(f"✅ Results saved to: {output_file}")
+        print(f"SUCCESS: Results saved to: {output_file}")
         
         # Create word-level prediction DataFrame
-        print("🔄 Creating word-level prediction DataFrame...")
+        print(" Creating word-level prediction DataFrame...")
         word_level_data = data.copy()
         word_level_data['predicted_switch_llm'] = None
         word_level_data['prediction_confidence_llm'] = None
@@ -327,15 +334,15 @@ def main():
                 word_level_data.loc[mask, 'prediction_reasoning_llm'] = chunk_row['reasoning_llm']
                 successful_mappings += 1
             elif len(matching_rows) > 1:
-                print(f"⚠️  Warning: Multiple matches for {player_id}, {category}, word_index {predicted_word_index}")
+                print(f"WARNING:  Warning: Multiple matches for {player_id}, {category}, word_index {predicted_word_index}")
             # If no matches, that's expected for the last word in each sequence
         
         # Save word-level results
         word_output_file = f"data_with_word_predictions_{safe_config_name}_{timestamp}.csv"
         word_level_data.to_csv(word_output_file, index=False)
         
-        print(f"✅ Word-level predictions saved to: {word_output_file}")
-        print(f"✅ Successfully mapped {successful_mappings} chunk predictions to words")
+        print(f"SUCCESS: Word-level predictions saved to: {word_output_file}")
+        print(f"SUCCESS: Successfully mapped {successful_mappings} chunk predictions to words")
         
         # Show word-level summary
         total_words = len(word_level_data)
@@ -343,7 +350,7 @@ def main():
         if words_with_predictions > 0:
             avg_confidence = word_level_data['prediction_confidence_llm'].mean()
             switch_rate = word_level_data['predicted_switch_llm'].mean()
-            print(f"📊 Word-level summary:")
+            print(f" Word-level summary:")
             print(f"   Total words: {total_words:,}")
             print(f"   Words with predictions: {words_with_predictions:,}")
             print(f"   Average confidence: {avg_confidence:.3f}")
@@ -358,16 +365,16 @@ def main():
         )
         
         elapsed_time = time.time() - start_time
-        print(f"⏱️ Total processing time: {format_duration(elapsed_time)}")
+        print(f" Total processing time: {format_duration(elapsed_time)}")
         
     except Exception as e:
-        print(f"❌ Error during prediction: {e}")
+        print(f"ERROR: Error during prediction: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
     
     # Step 7: Analysis summary
-    print("\n📈 Step 7: Analysis summary...")
+    print("\n Step 7: Analysis summary...")
     try:
         total_chunks = len(result_data)
         avg_confidence = result_data['confidence_llm'].mean()
@@ -396,11 +403,11 @@ def main():
         print(f"  Processing time: {format_duration(elapsed_time)}")
         
     except Exception as e:
-        print(f"⚠️ Error in final analysis: {e}")
+        print(f"WARNING: Error in final analysis: {e}")
     
     # Completion
     print_separator()
-    print("🎉 Configuration-driven prediction pipeline completed successfully!")
+    print(" Configuration-driven prediction pipeline completed successfully!")
     print(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Output file: {output_file}")
     print(f"Metadata: {Path(output_file).stem}_metadata.json")
@@ -412,10 +419,10 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n⚠️ Script interrupted by user")
+        print("\n\nWARNING: Script interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\nERROR: Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -59,6 +59,9 @@ class RobustConfigurableClassifier:
         self.config = config
         self.api_key = api_key
         
+        # Check if IRT timing should be included (backward compatible)
+        self.include_irt = getattr(config, 'include_irt', False)
+        
         # Create base classifier
         if config.provider == "anthropic":
             self.classifier = AnthropicSwitchClassifier(api_key=api_key, model=config.model)
@@ -81,6 +84,11 @@ class RobustConfigurableClassifier:
             sequence_data = group.sort_values('word_index')
             words = sequence_data['text'].tolist()
             
+            # Extract IRT values if available and requested
+            irt_values = None
+            if self.include_irt and 'irt' in sequence_data.columns:
+                irt_values = sequence_data['irt'].tolist()
+            
             if len(words) < 2:  # Need at least 2 words, skip word 0
                 continue
             
@@ -88,7 +96,7 @@ class RobustConfigurableClassifier:
             for word_idx in range(1, len(words)):  # Start from 1, skip word 0
                 target_word = words[word_idx]
                 
-                requests_data.append({
+                request_data = {
                     'request_id': request_index,
                     'player_id': player_id,
                     'category': category,
@@ -96,29 +104,54 @@ class RobustConfigurableClassifier:
                     'target_word_index': word_idx,
                     'target_word': target_word,
                     'sequence_length': len(words)
-                })
+                }
                 
+                # Add IRT values if available
+                if irt_values is not None:
+                    request_data['irt_values'] = irt_values
+                
+                requests_data.append(request_data)
                 request_index += 1
         
         return requests_data
     
-    def create_robust_switch_prompt(self, full_sequence, category, target_word_index, target_word):
+    def create_robust_switch_prompt(self, full_sequence, category, target_word_index, target_word, irt_values=None):
         """Create a prompt that shows full sequence but asks to classify one specific word."""
-        formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(full_sequence)])
+        # Format words with optional IRT timing information
+        if irt_values is not None and self.include_irt:
+            formatted_words = "\n".join([
+                f"{i}. {word} ({irt_values[i]:.0f}ms)" if i < len(irt_values) and irt_values[i] is not None 
+                else f"{i}. {word}" 
+                for i, word in enumerate(full_sequence)
+            ])
+        else:
+            formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(full_sequence)])
         
         # Use custom prompt template if available
         if self.config.prompt_template:
             # For custom templates, adapt to single word classification
-            prompt = self.config.prompt_template.format(
-                category=category,
-                word_sequence=formatted_words,
-                target_word_index=target_word_index,
-                target_word=target_word,
-                num_words=len(full_sequence)
-            )
+            template_vars = {
+                'category': category,
+                'word_sequence': formatted_words,
+                'target_word_index': target_word_index,
+                'target_word': target_word,
+                'num_words': len(full_sequence)
+            }
+            # Add IRT context for custom templates
+            if irt_values is not None and self.include_irt:
+                template_vars['irt_context'] = "Each word shows its inter-item response time (IRT) in milliseconds, indicating the time since the previous word."
+            else:
+                template_vars['irt_context'] = ""
+            
+            prompt = self.config.prompt_template.format(**template_vars)
             return prompt
         
         # Default robust prompt for single word classification
+        # Add IRT timing context if available
+        irt_instructions = ""
+        if irt_values is not None and self.include_irt:
+            irt_instructions = "\n- Each word shows its inter-item response time (IRT) in milliseconds - the time interval since the previous word\n- Longer IRTs (>2000ms) may indicate cognitive switches between thematic groups\n- Consider both semantic relationships AND timing patterns in your decision"
+        
         prompt = f"""You are participating in a verbal fluency experiment. You will see a complete sequence of words from the category "{category}" that were produced by another participant.
 
 Your task is to determine if ONE SPECIFIC WORD in this sequence starts a new thematic group or continues the current group.
@@ -126,7 +159,7 @@ Your task is to determine if ONE SPECIFIC WORD in this sequence starts a new the
 Instructions:
 - Look at the complete sequence of words below
 - Consider how people naturally cluster related words together when naming items from a category
-- Focus on the relationship between the target word and the words that came before it
+- Focus on the relationship between the target word and the words that came before it{irt_instructions}
 - Decide if the target word starts a new thematic group (1) or continues the current group (0)
 
 Complete word sequence from category "{category}":
@@ -164,7 +197,8 @@ Your response:"""
                 req_data['full_word_sequence'],
                 req_data['category'],
                 req_data['target_word_index'],
-                req_data['target_word']
+                req_data['target_word'],
+                req_data.get('irt_values')  # Pass IRT values if available
             )
             
             custom_id = f"single_word_{self.config.name}_{req_data['request_id']:06d}"
@@ -230,13 +264,27 @@ Your response:"""
         
         # Process each result
         for result in batch_results:
-            custom_id = result.get("custom_id")
-            
-            if "response" in result and result["response"]["status_code"] == 200:
-                try:
-                    # Parse the LLM response
+            # Handle both provider formats: Anthropic (object) vs Together AI (dict)
+            if hasattr(result, 'custom_id'):
+                # Anthropic format - MessageBatchIndividualResponse object
+                custom_id = result.custom_id
+                if result.result.type == "succeeded":
+                    response_text = result.result.message.content[0].text
+                    success = True
+                else:
+                    success = False
+            else:
+                # Together AI format - dictionary
+                custom_id = result.get("custom_id")
+                if "response" in result and result["response"]["status_code"] == 200:
                     response_body = result["response"]["body"]
                     response_text = response_body["choices"][0]["message"]["content"]
+                    success = True
+                else:
+                    success = False
+            
+            if success:
+                try:
                     
                     # Clean and parse JSON response
                     response_text = response_text.strip()
@@ -291,7 +339,11 @@ Your response:"""
                     print(f"  ❌ Error processing result for {custom_id}: {e}")
                     failed_results += 1
             else:
-                print(f"  ❌ Failed result for {custom_id}: {result}")
+                # Log failed results with provider context
+                if hasattr(result, 'custom_id'):
+                    print(f"  ❌ Anthropic result failed for {custom_id}: {result.result.type}")
+                else:
+                    print(f"  ❌ Together AI result failed for {custom_id}")
                 failed_results += 1
         
         print(f"\nSingle-word classification summary:")

@@ -273,6 +273,11 @@ class BaseSwitchPredictor(ABC):
             sequence_data = group.sort_values('word_index')
             words = sequence_data['text'].tolist()
             
+            # Extract IRT values if available and requested
+            irt_values = None
+            if hasattr(self, 'include_irt') and self.include_irt and 'irt' in sequence_data.columns:
+                irt_values = sequence_data['irt'].tolist()
+            
             if len(words) < 2:  # Need at least 2 words to predict next switch
                 continue
             
@@ -284,7 +289,7 @@ class BaseSwitchPredictor(ABC):
                 has_next_word = end_idx < len(words) - 1
                 next_word = words[end_idx + 1] if has_next_word else None
                 
-                chunks.append({
+                chunk_data = {
                     'chunk_id': chunk_index,
                     'player_id': player_id,
                     'category': category,
@@ -293,26 +298,50 @@ class BaseSwitchPredictor(ABC):
                     'has_next_word': has_next_word,
                     'next_word': next_word,
                     'sequence_length': len(words)
-                })
+                }
                 
+                # Add IRT values for the chunk if available
+                if irt_values is not None:
+                    chunk_data['chunk_irt_values'] = irt_values[:end_idx + 1]
+                
+                chunks.append(chunk_data)
                 chunk_index += 1
         
         return chunks
     
-    def create_switch_prediction_prompt(self, chunk_words: List[str], category: str) -> str:
+    def create_switch_prediction_prompt(self, chunk_words: List[str], category: str, irt_values=None) -> str:
         """Create a prompt for predicting if the next word will be a switch."""
-        formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(chunk_words)])
+        # Format words with optional IRT timing information
+        if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+            formatted_words = "\n".join([
+                f"{i}. {word} ({irt_values[i]:.0f}ms)" if i < len(irt_values) and irt_values[i] is not None 
+                else f"{i}. {word}" 
+                for i, word in enumerate(chunk_words)
+            ])
+        else:
+            formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(chunk_words)])
         
         # Use custom prompt template if available in config
         if self.config and self.config.prompt_template:
-            return self.config.prompt_template.format(
-                category=category,
-                chunk_words=formatted_words,
-                num_words=len(chunk_words),
-                chunk_length=len(chunk_words)
-            )
+            template_vars = {
+                'category': category,
+                'chunk_words': formatted_words,
+                'num_words': len(chunk_words),
+                'chunk_length': len(chunk_words)
+            }
+            # Add IRT context for custom templates
+            if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+                template_vars['irt_context'] = "Each word shows its inter-item response time (IRT) in milliseconds, indicating the time since the previous word."
+            else:
+                template_vars['irt_context'] = ""
+            
+            return self.config.prompt_template.format(**template_vars)
         
-        # Default prompt
+        # Default prompt with optional IRT instructions
+        irt_instructions = ""
+        if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+            irt_instructions = "\n- Each word shows its inter-item response time (IRT) in milliseconds - the time interval since the previous word\n- Longer IRTs (>2000ms) may indicate cognitive switches between thematic groups\n- Consider both semantic relationships AND timing patterns in your prediction"
+        
         prompt = f"""You are participating in a verbal fluency experiment. You will see a partial sequence of words from the category "{category}" that were produced by a participant.
 
 Your task is to predict whether the NEXT word (if there is one) will start a new thematic group or continue the current group.
@@ -320,7 +349,7 @@ Your task is to predict whether the NEXT word (if there is one) will start a new
 Think about:
 - What thematic group(s) the current words belong to
 - Whether the participant might switch to a different theme for their next word
-- Common patterns in verbal fluency tasks (people often cluster related words together)
+- Common patterns in verbal fluency tasks (people often cluster related words together){irt_instructions}
 
 Current word sequence from category "{category}":
 {formatted_words}
@@ -356,7 +385,11 @@ Your response must be valid JSON only. Do not include any other text."""
         requests = []
         
         for chunk in prediction_chunks:
-            prompt = self.create_switch_prediction_prompt(chunk['chunk_words'], chunk['category'])
+            prompt = self.create_switch_prediction_prompt(
+                chunk['chunk_words'], 
+                chunk['category'], 
+                chunk.get('chunk_irt_values')
+            )
             custom_id = f"pred_{chunk['chunk_id']:06d}"
             
             request = {
@@ -401,7 +434,11 @@ Your response must be valid JSON only. Do not include any other text."""
             print(f"   Chunk: {chunk['chunk_words']} → predicting for next word: {chunk['next_word']}")
             
             try:
-                prompt = self.create_switch_prediction_prompt(chunk['chunk_words'], chunk['category'])
+                prompt = self.create_switch_prediction_prompt(
+                chunk['chunk_words'], 
+                chunk['category'], 
+                chunk.get('chunk_irt_values')
+            )
                 messages = [{"role": "user", "content": prompt}]
                 
                 response_text = self.provider.make_single_request(messages, max_tokens=500)

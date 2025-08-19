@@ -28,6 +28,7 @@ class ModelConfig:
     created_date: str
     author: str
     notes: str
+    include_irt: bool = False  # Whether to include inter-item response times in prompts
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'ModelConfig':
@@ -44,7 +45,8 @@ class ModelConfig:
             output_format=config_dict.get('output_format', {}),
             created_date=config_dict.get('created_date', ''),
             author=config_dict.get('author', ''),
-            notes=config_dict.get('notes', '')
+            notes=config_dict.get('notes', ''),
+            include_irt=config_dict.get('include_irt', False)  # Backward compatible default
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -61,7 +63,8 @@ class ModelConfig:
             'output_format': self.output_format,
             'created_date': self.created_date,
             'author': self.author,
-            'notes': self.notes
+            'notes': self.notes,
+            'include_irt': self.include_irt
         }
 
 
@@ -89,10 +92,10 @@ class ConfigManager:
                 
                 config = ModelConfig.from_dict(config_data)
                 self.configs[config.name] = config
-                print(f"✅ Loaded config: {config.name}")
+                print(f"Loaded config: {config.name}")
                 
             except Exception as e:
-                print(f"❌ Failed to load {config_file}: {e}")
+                print(f"Failed to load {config_file}: {e}")
     
     def get_config(self, name: str) -> Optional[ModelConfig]:
         """Get a specific configuration by name."""
@@ -173,9 +176,9 @@ class ConfigManager:
         try:
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
-            print(f"✅ Metadata saved to: {metadata_file}")
+            print(f"Metadata saved to: {metadata_file}")
         except Exception as e:
-            print(f"❌ Failed to save metadata: {e}")
+            print(f"Failed to save metadata: {e}")
     
     def compare_configs(self, config_names: List[str]) -> Dict[str, Any]:
         """Compare multiple configurations side by side."""
@@ -260,7 +263,7 @@ class ConfigManager:
                 idx = int(choice) - 1
                 if 0 <= idx < len(configs):
                     selected = configs[idx]
-                    print(f"✅ Selected: {selected.name}")
+                    print(f"Selected: {selected.name}")
                     return selected
                 else:
                     print("Invalid choice. Please try again.")
@@ -315,6 +318,6 @@ if __name__ == "__main__":
     for config_name, config in manager.configs.items():
         issues = manager.validate_config(config)
         if issues:
-            print(f"❌ {config_name}: {', '.join(issues)}")
+            print(f"INVALID {config_name}: {', '.join(issues)}")
         else:
-            print(f"✅ {config_name}: Valid")
+            print(f"VALID {config_name}: Valid")

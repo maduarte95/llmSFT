@@ -60,7 +60,7 @@ prompt_template: |
 
 # Metadata
 created_date: "2025-08-18"
-author: "claude-assistant"
+author: "mariana"
 notes: "Enhanced Llama config with strict word verification and robust prompting to prevent word index mismatches"
 
 # Expected output format
