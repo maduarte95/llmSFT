@@ -509,7 +509,30 @@ parameters:
 2. **Group Labeling** → Label the identified groups
 3. **Switch Prediction** → Alternative approach for real-time prediction
 
-Or use **Prediction only** for prospective/incremental analysis.
+Or use **Prediction only** for prospective/incremental analysis.~
+
+**CREATE LLM classifications:**
+```uv run run_llm_classification_robust.py```
+   -> NOW WITH IRT
+	-> output:..._switches.csv
+```uv run run_llm_prediction_with_config.py```
+   - NOW WITH IRT
+	-> choose "no", then choose choose file with switches
+	-> output:..._predictions.csv
+```uv run run_llm_labeling_with_config.py```
+	-> choose file data_with_word_predictions_*
+	->output: ...labels.csv
+
+**ANALYZE DATA**
+```uv run analysis_pipeline.csv```
+-> choose ..labels.csv
+- ...filtered.csv -> contains filtered data
+
+```uv run python statistical_significance_analysis.py --force-test nonparametric```
+
+**RECOVER BATCH**
+SWITCHES - ANTHROPIC
+```uv run python retrieve_robust_batch_results.py msgbatch_01CAkQdXg9cFhxRcffTqeCx6 merged_trials_data_unfiltered.csv```
 
 ## Contributing
 
