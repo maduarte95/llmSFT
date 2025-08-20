@@ -516,6 +516,262 @@ Your response must be valid JSON only. Do not include any other text."""
         pass
 
 
+class BaseProgressiveSwitchClassifier(ABC):
+    """Abstract base class for progressive switch classification."""
+    
+    def __init__(self, provider: BaseLLMProvider, config=None):
+        self.provider = provider
+        self.config = config
+    
+    def create_progressive_chunk_data(self, data: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Create chunks for progressive classification with incremental word sequences."""
+        chunks = []
+        chunk_index = 0
+        
+        player_groups = data.groupby(['playerID', 'category'])
+        
+        for (player_id, category), group in player_groups:
+            sequence_data = group.sort_values('word_index')
+            words = sequence_data['text'].tolist()
+            
+            # Extract IRT values if available and requested
+            irt_values = None
+            if hasattr(self, 'include_irt') and self.include_irt and 'irt' in sequence_data.columns:
+                irt_values = sequence_data['irt'].tolist()
+            
+            if len(words) < 2:  # Need at least 2 words to classify second word
+                continue
+            
+            # Create progressive chunks: [0,1] to classify word 0, [0,1,2] to classify word 1, etc.
+            # Start from chunk size 2 (words 0,1) to classify word 0 (index 1 in chunk)
+            for end_idx in range(1, len(words)):  # Start from 1 to classify word at index 0
+                chunk_words = words[:end_idx + 1]  # Include words up to and including end_idx
+                target_word_index = end_idx - 1    # Classify the second-to-last word in chunk
+                target_word = words[target_word_index]
+                
+                chunk_data = {
+                    'chunk_id': chunk_index,
+                    'player_id': player_id,
+                    'category': category,
+                    'chunk_words': chunk_words,
+                    'chunk_end_index': end_idx,
+                    'target_word_index': target_word_index,  # Index in original sequence
+                    'target_word': target_word,
+                    'sequence_length': len(words)
+                }
+                
+                # Add IRT values for the chunk if available
+                if irt_values is not None:
+                    chunk_data['chunk_irt_values'] = irt_values[:end_idx + 1]
+                
+                chunks.append(chunk_data)
+                chunk_index += 1
+        
+        return chunks
+    
+    def create_progressive_classification_prompt(self, chunk_words: List[str], category: str, target_word_index: int, target_word: str, irt_values=None) -> str:
+        """Create a prompt for progressive switch classification."""
+        # Format words with optional IRT timing information
+        if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+            formatted_words = "\n".join([
+                f"{i}. {word} ({irt_values[i]:.0f}ms)" if i < len(irt_values) and irt_values[i] is not None 
+                else f"{i}. {word}" 
+                for i, word in enumerate(chunk_words)
+            ])
+        else:
+            formatted_words = "\n".join([f"{i}. {word}" for i, word in enumerate(chunk_words)])
+        
+        # Use custom prompt template if available in config
+        if self.config and self.config.prompt_template:
+            template_vars = {
+                'category': category,
+                'chunk_words': formatted_words,
+                'target_word_index': target_word_index,
+                'target_word': target_word,
+                'num_words': len(chunk_words),
+                'chunk_length': len(chunk_words)
+            }
+            # Add IRT context for custom templates
+            if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+                template_vars['irt_context'] = "Each word shows its inter-item response time (IRT) in milliseconds, indicating the time since the previous word."
+            else:
+                template_vars['irt_context'] = ""
+            
+            return self.config.prompt_template.format(**template_vars)
+        
+        # Default prompt with optional IRT instructions
+        irt_instructions = ""
+        if irt_values is not None and hasattr(self, 'include_irt') and self.include_irt:
+            irt_instructions = "\n- Each word shows its inter-item response time (IRT) in milliseconds - the time interval since the previous word\n- Longer IRTs (>2000ms) may indicate cognitive switches between thematic groups\n- Consider both semantic relationships AND timing patterns in your classification"
+        
+        prompt = f"""You are participating in a verbal fluency experiment. You will see a sequence of words from the category "{category}" that were produced by a participant.
+
+Your task is to determine whether ONE SPECIFIC WORD in this sequence starts a new thematic group or continues the current group, using the context of ALL words in the sequence including those that come after it.
+
+Instructions:
+- Look at the complete sequence of words below
+- Consider how people naturally cluster related words together when naming items from a category
+- Focus on the target word and its relationship to both previous AND subsequent words{irt_instructions}
+- Decide if the target word starts a new thematic group (1) or continues the current group (0)
+
+Word sequence from category "{category}":
+{formatted_words}
+
+TARGET WORD TO CLASSIFY:
+Word at position {target_word_index}: "{target_word}"
+
+Question: Does the word "{target_word}" at position {target_word_index} start a NEW thematic group (1) or CONTINUE the current thematic group (0)?
+
+Consider the context of ALL words in the sequence, including those that come after position {target_word_index}, when making your decision.
+
+RESPONSE FORMAT:
+Respond with ONLY a JSON object containing your classification.
+
+{{
+  "switch": 0_or_1,
+  "reasoning_switch": "brief explanation of your decision"
+}}
+
+Your response:"""
+        
+        return prompt
+    
+    def prepare_batch_requests(self, data: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Prepare batch requests for progressive classification."""
+        chunks = self.create_progressive_chunk_data(data)
+        
+        requests = []
+        
+        for chunk in chunks:
+            prompt = self.create_progressive_classification_prompt(
+                chunk['chunk_words'], 
+                chunk['category'], 
+                chunk['target_word_index'],
+                chunk['target_word'],
+                chunk.get('chunk_irt_values')
+            )
+            custom_id = f"prog_class_{chunk['chunk_id']:06d}"
+            
+            request = {
+                "custom_id": custom_id,
+                "params": {
+                    "model": self.provider.model,
+                    "max_tokens": 500,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                "metadata": {
+                    "chunk_id": chunk['chunk_id'],
+                    "player_id": chunk['player_id'],
+                    "category": chunk['category'],
+                    "chunk_words": chunk['chunk_words'],
+                    "chunk_end_index": chunk['chunk_end_index'],
+                    "target_word_index": chunk['target_word_index'],
+                    "target_word": chunk['target_word'],
+                    "sequence_length": chunk['sequence_length']
+                }
+            }
+            
+            requests.append(request)
+        
+        print(f"Prepared {len(requests)} batch requests for progressive switch classification")
+        return requests
+    
+    def dry_run_test(self, data: pd.DataFrame, num_tests: int = 2) -> bool:
+        """Test a few requests with the regular API before submitting the batch."""
+        print(f"🧪 Running dry run with {num_tests} test requests...")
+        
+        chunks = self.create_progressive_chunk_data(data)
+        
+        if len(chunks) == 0:
+            print("❌ No valid chunks found")
+            return False
+        
+        test_chunks = chunks[:num_tests]
+        
+        for i, chunk in enumerate(test_chunks):
+            print(f"\n🔍 Testing progressive classification {i+1}/{len(test_chunks)}: {chunk['player_id']} ({chunk['category']})")
+            print(f"   Chunk: {chunk['chunk_words']} → classifying word: {chunk['target_word']} at position {chunk['target_word_index']}")
+            
+            try:
+                prompt = self.create_progressive_classification_prompt(
+                    chunk['chunk_words'], 
+                    chunk['category'], 
+                    chunk['target_word_index'],
+                    chunk['target_word'],
+                    chunk.get('chunk_irt_values')
+                )
+                messages = [{"role": "user", "content": prompt}]
+                
+                response_text = self.provider.make_single_request(messages, max_tokens=500)
+                
+                # Parse and validate response
+                try:
+                    cleaned_text = response_text.strip()
+                    if cleaned_text.startswith("```json"):
+                        cleaned_text = cleaned_text[7:]
+                    if cleaned_text.endswith("```"):
+                        cleaned_text = cleaned_text[:-3]
+                    cleaned_text = cleaned_text.strip()
+                    
+                    response_data = json.loads(cleaned_text)
+                    
+                    switch = response_data.get('switch')
+                    reasoning = response_data.get('reasoning_switch', '')
+                    
+                    if switch not in [0, 1]:
+                        print(f"   ❌ Invalid switch value: {switch}")
+                        return False
+                    
+                    print(f"   ✅ Test {i+1} passed")
+                    print(f"     Classification: {switch}")
+                    print(f"     Reasoning: {reasoning[:50]}...")
+                    
+                except json.JSONDecodeError as e:
+                    print(f"   ❌ Invalid JSON response: {e}")
+                    print(f"   Response preview: {response_text[:200]}...")
+                    return False
+            
+            except Exception as e:
+                print(f"   ❌ API call failed: {e}")
+                return False
+        
+        print(f"\n✅ All {len(test_chunks)} dry run tests passed!")
+        return True
+    
+    def run_progressive_classification(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Run the complete progressive switch classification pipeline with batching."""
+        print("Starting LLM progressive switch classification...")
+        
+        # Step 1: Prepare batch requests
+        requests = self.prepare_batch_requests(data)
+        
+        if len(requests) == 0:
+            print("No valid requests to process. Returning original data.")
+            return data.copy()
+        
+        # Step 2: Run dry run test
+        if not self.dry_run_test(data, num_tests=min(2, len(requests))):
+            print("❌ Dry run failed. Please check your data and try again.")
+            return data.copy()
+        
+        # Step 3: Create batch
+        batch_id = self.provider.create_batch(requests)
+        
+        # Step 4: Monitor batch completion
+        final_batch = self.provider.monitor_batch(batch_id)
+        
+        # Step 5: Process results
+        result_data = self.process_batch_results(batch_id, data, requests)
+        
+        print("LLM progressive switch classification completed!")
+        return result_data
+    
+    @abstractmethod
+    def process_batch_results(self, batch_id: str, original_data: pd.DataFrame, requests_metadata: List[Dict]) -> pd.DataFrame:
+        """Process batch results and add LLM progressive classifications to the original data."""
+        pass
+
+
 class BaseGroupLabeler(ABC):
     """Abstract base class for group labeling."""
     

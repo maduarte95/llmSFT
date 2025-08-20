@@ -537,7 +537,7 @@ Or use **Prediction only** for prospective/incremental analysis.~
    - choose ..labels.csv
    - ...filtered.csv -> contains filtered data
 
-```uv run python statistical_significance_analysis.py --force-test nonparametric```
+```uv run python statistical_significance_analysis.py --force-test nonparametric --input results/metrics_by_player.csv --metric recall```
 
 **RECOVER BATCH**
 SWITCHES - ANTHROPIC

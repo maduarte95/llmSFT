@@ -222,7 +222,7 @@ class ConfigManager:
     
     def print_config_summary(self):
         """Print a summary of all loaded configurations."""
-        print("\n📊 Configuration Summary")
+        print("\nConfiguration Summary")
         print("=" * 50)
         
         if not self.configs:

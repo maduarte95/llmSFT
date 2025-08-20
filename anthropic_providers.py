@@ -9,7 +9,7 @@ import pandas as pd
 import json
 import time
 from typing import List, Dict, Any
-from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler, BaseSwitchPredictor
+from base_classifiers import BaseLLMProvider, BaseSwitchClassifier, BaseGroupLabeler, BaseSwitchPredictor, BaseProgressiveSwitchClassifier
 
 
 class AnthropicProvider(BaseLLMProvider):
@@ -428,3 +428,131 @@ class AnthropicSwitchPredictor(BaseSwitchPredictor):
         else:
             print("❌ No valid results to return")
             return pd.DataFrame()
+
+
+class AnthropicProgressiveSwitchClassifier(BaseProgressiveSwitchClassifier):
+    """Anthropic-based progressive switch classification."""
+    
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514", config=None):
+        provider = AnthropicProvider(api_key, model)
+        super().__init__(provider, config)
+        
+        # Check if IRT timing should be included (backward compatible)
+        self.include_irt = getattr(config, 'include_irt', False) if config else False
+    
+    def process_batch_results(self, batch_id: str, original_data: pd.DataFrame, requests_metadata: List[Dict]) -> pd.DataFrame:
+        """Process Anthropic batch results and add LLM progressive classifications to the original data."""
+        print(f"Processing Anthropic progressive classification results from {batch_id}...")
+        
+        # Create metadata lookup
+        metadata_lookup = {req["custom_id"]: req["metadata"] for req in requests_metadata}
+        
+        # Start with copy of original data
+        result_data = original_data.copy()
+        
+        # Initialize progressive classification columns if they don't exist
+        if 'switchLLM_prog' not in result_data.columns:
+            result_data['switchLLM_prog'] = None
+        if 'reasoning_switch_prog' not in result_data.columns:
+            result_data['reasoning_switch_prog'] = None
+        
+        # Set word 0 to always be a switch for all players (progressive classification starts from word 0)
+        for (player_id, category), group in result_data.groupby(['playerID', 'category']):
+            first_word_mask = (result_data['playerID'] == player_id) & \
+                             (result_data['category'] == category) & \
+                             (result_data['word_index'] == 0)
+            result_data.loc[first_word_mask, 'switchLLM_prog'] = 1
+        
+        successful_results = 0
+        failed_results = 0
+        
+        # Get results from Anthropic
+        batch_results = self.provider.process_batch_results(batch_id)
+        
+        # Process each result
+        for result in batch_results:
+            if result.result.type == "succeeded":
+                try:
+                    # Parse the LLM response
+                    response_text = result.result.message.content[0].text
+                    
+                    # Clean and parse JSON response
+                    response_text = response_text.strip()
+                    if response_text.startswith("```json"):
+                        response_text = response_text[7:]
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]
+                    response_text = response_text.strip()
+                    
+                    response_data = json.loads(response_text)
+                    
+                    # Get metadata for this request
+                    custom_id = result.custom_id
+                    metadata = metadata_lookup.get(custom_id, {})
+                    player_id = metadata.get('player_id')
+                    category = metadata.get('category')
+                    target_word_index = metadata.get('target_word_index')
+                    target_word = metadata.get('target_word')
+                    
+                    if not player_id or target_word_index is None:
+                        print(f"  ❌ Missing metadata for {custom_id}")
+                        failed_results += 1
+                        continue
+                    
+                    # Extract progressive classification
+                    switch_value = response_data.get('switch')
+                    reasoning_switch = response_data.get('reasoning_switch', '')
+                    
+                    # Validate response
+                    if switch_value not in [0, 1]:
+                        print(f"  ❌ Invalid switch value for {player_id} word {target_word_index}: {switch_value}")
+                        failed_results += 1
+                        continue
+                    
+                    # Apply classification to the specific word
+                    word_mask = (result_data['playerID'] == player_id) & \
+                               (result_data['category'] == category) & \
+                               (result_data['word_index'] == target_word_index)
+                    
+                    if not word_mask.any():
+                        print(f"  ❌ No matching row for {player_id} word {target_word_index}")
+                        failed_results += 1
+                        continue
+                    
+                    result_data.loc[word_mask, 'switchLLM_prog'] = switch_value
+                    result_data.loc[word_mask, 'reasoning_switch_prog'] = reasoning_switch
+                    
+                    successful_results += 1
+                    if successful_results <= 10:  # Show first few for debugging
+                        print(f"  ✅ {player_id} word {target_word_index} ('{target_word}'): {switch_value}")
+                
+                except Exception as e:
+                    print(f"  ❌ Error processing result for {result.custom_id}: {e}")
+                    failed_results += 1
+            else:
+                print(f"  ❌ Anthropic result failed for {result.custom_id}: {result.result.type}")
+                failed_results += 1
+        
+        print(f"\nProgressive classification summary:")
+        print(f"- Successful: {successful_results}")
+        print(f"- Failed: {failed_results}")
+        print(f"- Total rows: {len(result_data)}")
+        print(f"- Rows with LLM progressive classifications: {result_data['switchLLM_prog'].notna().sum()}")
+        
+        if result_data['switchLLM_prog'].notna().sum() > 0:
+            print(f"- LLM progressive switch rate: {result_data['switchLLM_prog'].mean():.3f}")
+        
+        # Compare with existing switch column if available
+        if 'switch' in result_data.columns:
+            human_switch_rate = result_data['switch'].mean()
+            print(f"- Human switch rate: {human_switch_rate:.3f}")
+            
+            both_exist = result_data[['switch', 'switchLLM_prog']].notna().all(axis=1)
+            if both_exist.sum() > 0:
+                agreement = (result_data.loc[both_exist, 'switch'] == result_data.loc[both_exist, 'switchLLM_prog']).mean()
+                print(f"- Human-LLM progressive agreement: {agreement:.3f}")
+        
+        # Convert to int format
+        result_data['switchLLM_prog'] = pd.to_numeric(result_data['switchLLM_prog'], errors='coerce').astype('Int64')
+        
+        return result_data

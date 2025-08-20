@@ -86,6 +86,9 @@ class StatisticalSignificanceAnalyzer:
             'LLM_Predicted'
         ]
         
+        # Progressive methods will be added dynamically if available
+        self.progressive_methods = []
+        
         # Include baselines for additional comparisons
         self.all_methods = self.main_methods + ['Random_Baseline', 'ZeroR_Baseline']
         
@@ -93,6 +96,27 @@ class StatisticalSignificanceAnalyzer:
         self.data = None
         self.paired_data = None
         self.statistical_results = []
+    
+    def _detect_progressive_methods(self):
+        """
+        Detect available progressive methods in the loaded data and update method lists.
+        """
+        available_methods = set(self.data['method'].unique())
+        
+        # Check for progressive methods
+        progressive_methods = [method for method in available_methods if 'Progressive' in method]
+        
+        if progressive_methods:
+            self.progressive_methods = progressive_methods
+            print(f"✅ Progressive methods found: {progressive_methods}")
+            
+            # Add progressive methods to main methods for analysis
+            self.main_methods.extend(progressive_methods)
+            self.all_methods = self.main_methods + ['Random_Baseline', 'ZeroR_Baseline']
+            
+            print(f"Updated main methods: {self.main_methods}")
+        else:
+            print("No progressive methods found in data")
         
     def load_data(self):
         """
@@ -108,6 +132,9 @@ class StatisticalSignificanceAnalyzer:
         print(f"Available methods: {sorted(self.data['method'].unique())}")
         print(f"Available categories: {sorted(self.data['category'].unique())}")
         print(f"Unique participants: {self.data['playerID'].nunique()}")
+        
+        # Detect progressive methods
+        self._detect_progressive_methods()
         
         # Prepare paired data for statistical testing
         self._prepare_paired_data()
@@ -329,6 +356,7 @@ class StatisticalSignificanceAnalyzer:
             'Human_Predicted': '#ff7f7f',      # Light red
             'LLM_Retrospective': '#4444ff',     # Blue
             'LLM_Predicted': '#7fbfff',        # Light blue
+            'LLM_Progressive': '#2d8659',       # Dark green (progressive)
             'Random_Baseline': '#cccccc',       # Light gray
             'ZeroR_Baseline': '#999999'        # Dark gray
         }
@@ -466,6 +494,7 @@ class StatisticalSignificanceAnalyzer:
             'Human_Predicted': '#ff7f7f',      # Light red
             'LLM_Retrospective': '#4444ff',     # Blue
             'LLM_Predicted': '#7fbfff',        # Light blue
+            'LLM_Progressive': '#2d8659',       # Dark green (progressive)
             'Random_Baseline': '#cccccc',       # Light gray
             'ZeroR_Baseline': '#999999'        # Dark gray
         }
@@ -607,6 +636,18 @@ class StatisticalSignificanceAnalyzer:
             ('LLM_Retrospective', 'ZeroR_Baseline')
         ]
         
+        # Add progressive method comparisons if available
+        if self.progressive_methods:
+            for progressive_method in self.progressive_methods:
+                # Compare progressive with other identification methods
+                target_pairs.extend([
+                    ('Human_Retrospective', progressive_method),
+                    ('LLM_Retrospective', progressive_method),
+                    (progressive_method, 'Random_Baseline'),
+                    (progressive_method, 'ZeroR_Baseline')
+                ])
+            print(f"Added progressive comparisons for: {self.progressive_methods}")
+        
         # Test normality assumptions for only these pairs (unless forcing a specific test type)
         if force_test_type is None:
             normality_results = self.test_normality_assumptions_targeted(metric, target_pairs)
@@ -728,6 +769,10 @@ class StatisticalSignificanceAnalyzer:
         prediction_methods = {'Human_Predicted', 'LLM_Predicted', 'Random_Baseline', 'ZeroR_Baseline'}
         identification_methods = {'Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline'}
         
+        # Add progressive methods to identification task
+        if self.progressive_methods:
+            identification_methods.update(self.progressive_methods)
+        
         for result in comparison_results:
             methods_in_comparison = {result['method1'], result['method2']}
             
@@ -823,6 +868,11 @@ class StatisticalSignificanceAnalyzer:
         prediction_methods = ['Human_Predicted', 'LLM_Predicted', 'Random_Baseline', 'ZeroR_Baseline']
         identification_methods = ['Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline']
         
+        # Add progressive methods to identification panel if available
+        if self.progressive_methods:
+            for progressive_method in self.progressive_methods:
+                identification_methods.insert(-2, progressive_method)  # Insert before baselines
+        
         # Calculate summary statistics for each method
         metric_data = self.paired_data[metric].copy()
         summary_stats = []
@@ -917,6 +967,10 @@ class StatisticalSignificanceAnalyzer:
         prediction_panel_methods = {'Human_Predicted', 'LLM_Predicted', 'Random_Baseline', 'ZeroR_Baseline'}
         identification_panel_methods = {'Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline'}
         
+        # Add progressive methods to identification panel
+        if self.progressive_methods:
+            identification_panel_methods.update(self.progressive_methods)
+        
         # Get the actual methods shown in this panel
         panel_methods_shown = set(methods)
         
@@ -991,6 +1045,11 @@ class StatisticalSignificanceAnalyzer:
         # Define method groupings
         prediction_methods = ['Human_Predicted', 'LLM_Predicted', 'Random_Baseline', 'ZeroR_Baseline']
         identification_methods = ['Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline']
+        
+        # Add progressive methods to identification if available
+        if self.progressive_methods:
+            for progressive_method in self.progressive_methods:
+                identification_methods.insert(-2, progressive_method)  # Insert before baselines
         
         f1_data = self.paired_data['f1'].copy()
         

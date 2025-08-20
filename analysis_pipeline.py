@@ -57,8 +57,40 @@ class SwitchAnalysisPipeline:
             'LLM_Predicted': 'predicted_switch_llm'
         }
         
+        # Add progressive classification if available
+        self._add_progressive_columns()
+        
         self.data = None
         self.filtered_data = None
+    
+    def _add_progressive_columns(self):
+        """
+        Add progressive classification columns if they will be available in the data.
+        This method will be called after data loading to check for actual column presence.
+        """
+        # These will be added dynamically after data is loaded
+        self.progressive_columns = {
+            'LLM_Progressive': 'switchLLM_prog'
+        }
+    
+    def _detect_and_add_progressive_columns(self):
+        """
+        Detect available progressive classification columns in the loaded data.
+        """
+        self.available_progressive_columns = {}
+        
+        # Check for progressive classification columns
+        if 'switchLLM_prog' in self.data.columns:
+            self.available_progressive_columns['LLM_Progressive'] = 'switchLLM_prog'
+            print("✅ Progressive classification column found: switchLLM_prog")
+        
+        # Add future progressive column types here if needed
+        # if 'switchLLM_prog_anthropic' in self.data.columns:
+        #     self.available_progressive_columns['LLM_Progressive_Anthropic'] = 'switchLLM_prog_anthropic'
+        
+        # Update the main switch_columns dictionary to include available progressive columns
+        if self.available_progressive_columns:
+            self.switch_columns.update(self.available_progressive_columns)
         
     def load_and_filter_data(self):
         """
@@ -74,11 +106,19 @@ class SwitchAnalysisPipeline:
         print(f"Unique players: {self.data['playerID'].nunique()}")
         print(f"Categories: {list(self.data['category'].unique())}")
         
+        # Check for progressive classification columns and add them if available
+        self._detect_and_add_progressive_columns()
+        
         # Check for required columns
-        required_cols = ['switch_ground_truth'] + list(self.switch_columns.values())
+        all_switch_columns = {**self.switch_columns, **getattr(self, 'available_progressive_columns', {})}
+        required_cols = ['switch_ground_truth'] + list(all_switch_columns.values())
         missing_cols = [col for col in required_cols if col not in self.data.columns]
         if missing_cols:
             print(f"Warning: Missing columns: {missing_cols}")
+        
+        # Print available progressive columns
+        if hasattr(self, 'available_progressive_columns') and self.available_progressive_columns:
+            print(f"Progressive classification columns found: {list(self.available_progressive_columns.keys())}")
         
         # Filter criteria from notebook:
         # 1. Remove word_index 0 (first word doesn't have a switch)
@@ -467,9 +507,15 @@ class SwitchAnalysisPipeline:
         Create bar plot comparing switch prediction vs identification (overall).
         Plot A: Two sets of bars for prediction vs identification accuracy.
         """
-        # Define method groupings
+        # Define method groupings (dynamically include progressive methods if available)
         prediction_methods = ['Human_Predicted', 'LLM_Predicted', 'Random_Baseline', 'ZeroR_Baseline']
         identification_methods = ['Human_Retrospective', 'LLM_Retrospective', 'Random_Baseline', 'ZeroR_Baseline']
+        
+        # Add progressive methods if available
+        if hasattr(self, 'available_progressive_columns') and self.available_progressive_columns:
+            for method_name in self.available_progressive_columns.keys():
+                if 'Progressive' in method_name:
+                    identification_methods.insert(-2, method_name)  # Insert before baselines
         
         # Get metric data
         metric_data = self.summary_stats[self.summary_stats['metric_type'] == metric].copy()
@@ -490,6 +536,7 @@ class SwitchAnalysisPipeline:
             'Human_Retrospective': '#ff4444',   # Red  
             'LLM_Predicted': '#7fbfff',        # Light blue
             'LLM_Retrospective': '#4444ff',     # Blue
+            'LLM_Progressive': '#2d8659',       # Dark green (progressive)
             'Random_Baseline': '#cccccc',       # Light gray
             'ZeroR_Baseline': '#999999'        # Dark gray
         }
@@ -577,6 +624,7 @@ class SwitchAnalysisPipeline:
             'Human_Retrospective': '#ff4444', 
             'LLM_Predicted': '#7fbfff',
             'LLM_Retrospective': '#4444ff',
+            'LLM_Progressive': '#2d8659',       # Dark green (progressive)
             'Random_Baseline': '#cccccc',
             'ZeroR_Baseline': '#999999'
         }
@@ -633,8 +681,14 @@ class SwitchAnalysisPipeline:
         """
         print("Creating accuracy by word index plot...")
         
-        # Only use prediction methods for this analysis
+        # Use prediction and identification methods for this analysis
         methods_to_plot = ['Human_Predicted', 'LLM_Predicted']
+        
+        # Add progressive methods if available
+        if hasattr(self, 'available_progressive_columns') and self.available_progressive_columns:
+            for method_name in self.available_progressive_columns.keys():
+                if 'Progressive' in method_name:
+                    methods_to_plot.append(method_name)
         
         # Get word index range
         word_indices = self.filtered_data['word_index'].values
@@ -702,7 +756,8 @@ class SwitchAnalysisPipeline:
         # Colors for methods
         method_colors = {
             'Human_Predicted': '#ff7f7f',
-            'LLM_Predicted': '#7fbfff'
+            'LLM_Predicted': '#7fbfff',
+            'LLM_Progressive': '#2d8659'
         }
         
         # Plot lines with confidence intervals
@@ -769,8 +824,14 @@ class SwitchAnalysisPipeline:
         """
         print("Creating additional metrics by word index plots...")
         
-        # Only use prediction methods for this analysis
+        # Use prediction and identification methods for this analysis
         methods_to_plot = ['Human_Predicted', 'LLM_Predicted']
+        
+        # Add progressive methods if available
+        if hasattr(self, 'available_progressive_columns') and self.available_progressive_columns:
+            for method_name in self.available_progressive_columns.keys():
+                if 'Progressive' in method_name:
+                    methods_to_plot.append(method_name)
         
         # Get word index range
         word_indices = self.filtered_data['word_index'].values
@@ -784,7 +845,8 @@ class SwitchAnalysisPipeline:
         # Colors for methods
         method_colors = {
             'Human_Predicted': '#ff7f7f',
-            'LLM_Predicted': '#7fbfff'
+            'LLM_Predicted': '#7fbfff',
+            'LLM_Progressive': '#2d8659'
         }
         
         for metric in metrics:
