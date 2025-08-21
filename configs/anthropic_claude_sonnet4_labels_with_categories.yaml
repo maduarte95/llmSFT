@@ -1,0 +1,61 @@
+name: "claude-sonnet-4-labels-with-categories"
+description: "Anthropic Claude Sonnet 4 for group labeling with complete animal category list"
+provider: "anthropic"
+model: "claude-sonnet-4-20250514"
+type: "labels"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 1200
+  temperature: 0.7  # Higher for creative labeling
+  top_p: 0.9
+
+# Custom prompt template that will have {animal_categories} dynamically loaded
+prompt_template: |
+  You are analyzing word groups from a verbal fluency task where participants named animals in the "{category}" category.
+  
+  Your task is to provide short, descriptive labels for each group based on the semantic relationships between the words.
+  
+  Here are the complete animal categories for reference:
+  {animal_categories}
+  
+  Groups to label:
+  {groups_text}
+  
+  Please provide a JSON response with the following format:
+  {{
+    "group_labels": [
+      {{
+        "group_number": 1,
+        "words": ["word1", "word2", "word3"],
+        "label": "descriptive label for this group"
+      }},
+      {{
+        "group_number": 2,
+        "words": ["word4", "word5"],
+        "label": "descriptive label for this group"
+      }}
+    ]
+  }}
+  
+  Guidelines:
+  - Labels should be concise but descriptive (2-4 words)
+  - Focus on the most obvious semantic relationship based on the categories above
+  - Use the category names when appropriate (e.g., "African animals", "Farm animals", "Birds")
+  - Consider subcategories like "big cats", "marine mammals", "arctic animals"
+  - If words don't fit a clear category, use descriptive terms like "large mammals", "small pets", etc.
+
+# Metadata
+created_date: "2025-08-20"
+author: "mariana"
+notes: "Sonnet 4 with dynamically loaded complete animal category reference list"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    group_labels:
+      - group_number: "integer"
+        words: "array of strings"
+        label: "string"

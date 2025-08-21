@@ -1,0 +1,60 @@
+name: "together-llama-33-70b-labels-with-categories"
+description: "Together Llama 3.3 70B for group labeling with complete animal category list"
+provider: "together"
+model: "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+type: "labels"
+version: "1.0"
+
+# Model parameters
+parameters:
+  max_tokens: 1200
+  temperature: 0.1  # Lower for more consistent categorization
+  top_p: 0.9
+
+# Custom prompt template that will have {animal_categories} dynamically loaded
+prompt_template: |
+  You are analyzing word groups from a verbal fluency task where participants named animals in the "{category}" category.
+  
+  Your task is to label each group based on a categorization schema provided below.
+  
+  Here are the complete animal categories for reference:
+  {animal_categories}
+  
+  Groups of words to label:
+  {groups_text}
+  
+  Please provide a JSON response with the following format:
+  {{
+    "group_labels": [
+      {{
+        "group_number": 1,
+        "words": ["word1", "word2", "word3"],
+        "label": "descriptive label for this group"
+      }},
+      {{
+        "group_number": 2,
+        "words": ["word4", "word5"],
+        "label": "descriptive label for this group"
+      }}
+    ]
+  }}
+  
+  Guidelines:
+  - Label the groups only with the exact provided animal categories.
+  - Don't use your own words or labels.
+  - If words in the same group seem to belong to different categories, use the category that best fits the majority of words.
+  - If words don't clearly fit a category, choose the closest appropriate one.
+
+# Metadata
+created_date: "2025-08-20"
+author: "mariana"
+notes: "Llama 3.3 70B with animal category reference list for improved labeling accuracy"
+
+# Expected output format
+output_format:
+  type: "json"
+  schema:
+    group_labels:
+      - group_number: "integer"
+        words: "array of strings"
+        label: "string"

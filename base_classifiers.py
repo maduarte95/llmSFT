@@ -543,10 +543,11 @@ class BaseProgressiveSwitchClassifier(ABC):
                 continue
             
             # Create progressive chunks: [0,1] to classify word 0, [0,1,2] to classify word 1, etc.
-            # Start from chunk size 2 (words 0,1) to classify word 0 (index 1 in chunk)
-            for end_idx in range(1, len(words)):  # Start from 1 to classify word at index 0
+            # Start from chunk size 2 (words 0,1) to classify word 0
+            for end_idx in range(1, len(words)):  # Normal range for all but last word
                 chunk_words = words[:end_idx + 1]  # Include words up to and including end_idx
                 target_word_index = end_idx - 1    # Classify the second-to-last word in chunk
+                
                 target_word = words[target_word_index]
                 
                 chunk_data = {
@@ -554,7 +555,7 @@ class BaseProgressiveSwitchClassifier(ABC):
                     'player_id': player_id,
                     'category': category,
                     'chunk_words': chunk_words,
-                    'chunk_end_index': end_idx,
+                    'chunk_end_index': end_idx,  # Last word index in chunk
                     'target_word_index': target_word_index,  # Index in original sequence
                     'target_word': target_word,
                     'sequence_length': len(words)
@@ -565,6 +566,30 @@ class BaseProgressiveSwitchClassifier(ABC):
                     chunk_data['chunk_irt_values'] = irt_values[:end_idx + 1]
                 
                 chunks.append(chunk_data)
+                chunk_index += 1
+            
+            # Add special chunk for the last word - use entire sequence to classify last word
+            if len(words) >= 2:
+                last_chunk_words = words  # Entire sequence
+                last_target_word_index = len(words) - 1  # Last word index
+                last_target_word = words[last_target_word_index]
+                
+                last_chunk_data = {
+                    'chunk_id': chunk_index,
+                    'player_id': player_id,
+                    'category': category,
+                    'chunk_words': last_chunk_words,
+                    'chunk_end_index': len(words) - 1,  # Last word index in chunk
+                    'target_word_index': last_target_word_index,  # Index in original sequence
+                    'target_word': last_target_word,
+                    'sequence_length': len(words)
+                }
+                
+                # Add IRT values for the chunk if available
+                if irt_values is not None:
+                    last_chunk_data['chunk_irt_values'] = irt_values
+                
+                chunks.append(last_chunk_data)
                 chunk_index += 1
         
         return chunks

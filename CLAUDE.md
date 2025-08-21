@@ -1,3 +1,0 @@
-- This project uses uv; remember that when attempting to run code through the terminal!
-- No emojis!
-- When adding functionality that involves request batches, make sure to maintain compatibility for both Anthropic and Together providers!
